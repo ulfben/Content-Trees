@@ -1,0 +1,16 @@
+# Local tools and generated packages
+/node_modules/
+/vendor/
+/dist/
+/build/
+*.zip
+
+# Local configuration and editor files
+.env
+.env.*
+!.env.example
+/.idea/
+/.vscode/
+.DS_Store
+Thumbs.db
+*.log

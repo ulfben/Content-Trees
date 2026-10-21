@@ -1,0 +1,35 @@
+.ctrees { --ctrees-indent: 1rem; font: inherit; line-height: 1.55; }
+.ctrees h2 { font-size: 1.15em; margin-block: 0 1rem; }
+.ctrees details { margin-block: .25rem; }
+.ctrees summary { cursor: pointer; display: flex; align-items: center; inline-size: fit-content; max-inline-size: 100%; padding-block: .15rem; list-style: none; }
+.ctrees summary::-webkit-details-marker { display: none; }
+.ctrees .ctrees-toggle { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 24px; block-size: 24px; }
+.ctrees .ctrees-toggle::before { content: ''; inline-size: 0; block-size: 0; border-block: 4px solid transparent; border-inline-start: 6px solid currentColor; }
+.ctrees details[open] > summary > .ctrees-toggle::before { transform: rotate(90deg); }
+.ctrees:dir(rtl) details[open] > summary > .ctrees-toggle::before { transform: rotate(-90deg); }
+.ctrees .ctrees-month { margin-inline-start: var(--ctrees-indent); }
+.ctrees .ctrees-count { font-size: .85em; font-weight: normal; margin-inline-start: .3em; }
+.ctrees .ctrees-archive { display: inline-flex; align-items: center; min-block-size: 24px; color: inherit; }
+@media (pointer: coarse) {
+    .ctrees .ctrees-toggle { flex-basis: 44px; block-size: 44px; }
+    .ctrees .ctrees-archive { min-inline-size: 44px; min-block-size: 44px; }
+}
+.ctrees .ctrees-posts { list-style: none; padding: 0; margin-block: .5rem; margin-inline: var(--ctrees-indent) 0; }
+.ctrees .ctrees-posts li { border: 0; padding: 0; margin-block: .35rem; overflow-wrap: anywhere; }
+.ctrees a[aria-current="page"] { font-weight: bold; text-decoration: underline; text-decoration-thickness: .12em; }
+.ctrees :focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+.ctrees .ctrees-status { margin: .5rem 0 .5rem var(--ctrees-indent); font-size: .9em; }
+.ctrees .ctrees-status:empty { display: none; }
+.ctrees .ctrees-announcement { position: absolute; inline-size: 1px; block-size: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+.ctrees button { font: inherit; margin-inline-start: var(--ctrees-indent); }
+.ctrees [hidden] { display: none !important; }
+.ctrees > .ctrees-month { margin-inline-start: 0; }
+.ctrees-month-link { margin-block: .25rem; }
+.ctrees-year > .ctrees-month-link { margin-inline-start: var(--ctrees-indent); }
+.ctrees-month-link > a { display: inline-block; }
+.ctrees .ctrees-controls { margin-block: 0 .5rem; }
+.ctrees .ctrees-controls button { font: inherit; color: inherit; background: none; border: 0; padding: .25rem 0; margin: 0; text-decoration: underline; cursor: pointer; box-shadow: none; }
+.ctrees .ctrees-controls > span { padding-inline: .35rem; }
+@media (pointer: coarse) { .ctrees .ctrees-controls button { min-block-size: 44px; } }
+/* Show the inert controls in the editor preview; without JS they stay hidden on the site. */
+.block-editor-block-list__block .ctrees .ctrees-controls[hidden] { display: block !important; }

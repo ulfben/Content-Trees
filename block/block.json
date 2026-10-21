@@ -1,0 +1,28 @@
+{
+    "$schema": "https://schemas.wp.org/trunk/block.json",
+    "apiVersion": 3,
+    "name": "content-trees/archive",
+    "version": "0.7.0",
+    "title": "Content Trees: Archive",
+    "category": "widgets",
+    "icon": "archive",
+    "description": "A compact archive tree with collapsible years and months.",
+    "keywords": ["archives", "tree", "posts"],
+    "textdomain": "content-trees",
+    "attributes": {
+        "title": { "type": "string" },
+        "showCounts": { "type": "boolean", "default": true },
+        "showArchiveLinks": { "type": "boolean", "default": true },
+        "showControls": { "type": "boolean", "default": false },
+        "autoOpen": { "type": "boolean", "default": true },
+        "showPosts": { "type": "boolean", "default": true },
+        "groupYears": { "type": "boolean", "default": true },
+        "closeSiblings": { "type": "boolean", "default": false },
+        "order": { "type": "string", "enum": ["ASC", "DESC"], "default": "DESC" },
+        "exclude": { "type": "array", "items": { "type": "integer" }, "default": [] }
+    },
+    "supports": { "html": false, "customClassName": false },
+    "editorScript": "file:./editor.js",
+    "style": "content-trees",
+    "viewScript": "content-trees"
+}
