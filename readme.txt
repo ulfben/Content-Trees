@@ -24,12 +24,9 @@ Version 0.7 introduces the archive tree. Page, category and tag trees are planne
 * **On-demand loading:** Posts are loaded only when a month is expanded, with no pagination or arbitrary limits. Previously loaded titles are cached for faster navigation.
 * **Flexible display:** Show or hide posts and post counts, choose newest or oldest first, and optionally link years and months to their archives.
 * **Current-post navigation:** Highlight the current post and optionally expand its branch automatically.
-* **Branch controls:** Optional Open All / Close All links, with the ability to automatically close sibling branches.
 * **Post exclusions:** Search for and exclude individual posts from both the tree and its post counts.
 * **WordPress integration:** A block with live preview, a classic widget, and shortcode support.
-* **Accessible navigation:** Native disclosure controls, separate expand/collapse and archive links, keyboard navigation, touch-friendly controls, and screen-reader loading announcements.
-
-Only published, non-password-protected standard WordPress posts are included. When enabled, archive links remain functional even without JavaScript.
+* **Accessible navigation:** Native disclosure controls, keyboard navigation, touch-friendly controls, and screen-reader loading announcements.
 
 = Coming next =
 
@@ -48,25 +45,15 @@ Future possibilities include support for custom taxonomies, custom post types, a
 3. Add the Content Trees: Archive block in Appearance > Widgets. With a block theme, add it to a template or template part in Appearance > Editor.
 4. Choose a title and display options, then save. Classic widget areas can use the archive widget instead.
 
-When updating an earlier preview with a different plugin name, install Content Trees in its own `content-trees` folder, add its archive block or widget, and copy your display settings. Earlier preview widgets, blocks and shortcodes are not converted automatically. Deactivate the earlier preview after replacing its trees.
-
 == Frequently Asked Questions ==
 
 = Can I use this alongside WP-dTree? =
 
-Yes. The current preview installs separately and leaves WP-dTree's widgets and settings intact. Add a new archive tree to try it; existing widgets are not converted automatically.
-
-= Does excluding a post hide it from my site? =
-
-No. Exclusions affect this tree and its counts only. Linked WordPress archive pages still show their normal contents. Exclusions are not an access-control feature.
+Yes. Content Trees installs separately and leaves WP-dTree's widgets and settings intact. Add a new archive tree to try it; existing widgets are not converted automatically.
 
 = Can I add a tree with a shortcode? =
 
 Yes. Use `[content_trees_archive title="Archives"]`. The block and classic widget offer the easiest way to configure a tree.
-
-= What has been tested? =
-
-The archive tree has been tested with 3,200 posts across 274 months, classic and block themes, desktop and mobile layouts, and Windows Narrator. Runtime checks cover WordPress 6.3 with PHP 7.4 and WordPress 7.1 with PHP 8.5. Membership and multilingual integrations have not yet been verified.
 
 == Screenshots ==
 
