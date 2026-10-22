@@ -1,0 +1,18 @@
+{
+    "$schema": "https://schemas.wp.org/trunk/block.json",
+    "apiVersion": 3,
+    "name": "content-trees/pages",
+    "version": "0.7.0",
+    "title": "Content Trees: Pages",
+    "category": "widgets",
+    "icon": "admin-page",
+    "description": "A compact tree of published pages.",
+    "keywords": ["pages", "tree", "navigation"],
+    "textdomain": "content-trees",
+    "attributes": {
+        "title": { "type": "string", "default": "Pages" }
+    },
+    "supports": { "html": false, "customClassName": false },
+    "editorScript": "file:./editor.js",
+    "style": "content-trees"
+}

@@ -363,5 +363,8 @@ add_action('widgets_init', static function () {
 // Show one clear choice in the block inserter; saved legacy widgets still render.
 add_filter('widget_types_to_hide_from_legacy_widget_block', static function ($types) {
     $types[] = 'ctrees_archive';
+    $types[] = 'ctrees_pages';
     return $types;
 });
+
+require_once __DIR__ . '/pages.php';

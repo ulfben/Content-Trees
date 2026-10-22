@@ -11,7 +11,9 @@
             task().finally(() => { active--; drain(); });
         }
     }
-    document.querySelectorAll('.ctrees').forEach(tree => {
+    // Pages use the shared .ctrees styling but no archive endpoint/messages.
+    // Keep this initializer scoped to archive markup, including cached 0.7 HTML.
+    document.querySelectorAll('.ctrees[data-endpoint][data-messages]').forEach(tree => {
         const messages = JSON.parse(tree.dataset.messages);
         // One live region per tree: month status text remains readable in place.
         const announcement = document.createElement('p');
