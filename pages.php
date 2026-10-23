@@ -38,7 +38,7 @@ function is_public_page($page) {
 /** Keep block, widget and shortcode defaults and normalization together. */
 function pages_options($args = array()) {
     $defaults = array('title' => __('Pages', 'content-trees'), 'show_title' => true,
-        'sort_by' => 'menu_order', 'order' => 'ASC', 'auto_open' => true, 'open_to' => 0);
+        'sort_by' => 'menu_order', 'order' => 'ASC', 'auto_open' => true, 'open_to' => 0, 'root' => 0);
     $args = array_intersect_key(wp_parse_args($args, $defaults), $defaults);
     $args['title'] = is_string($args['title']) ? sanitize_text_field($args['title']) : $defaults['title'];
     $args['show_title'] = enabled($args['show_title']) && $args['title'] !== '';
@@ -46,7 +46,24 @@ function pages_options($args = array()) {
     $args['order'] = $args['order'] === 'DESC' ? 'DESC' : 'ASC';
     $args['auto_open'] = enabled($args['auto_open']);
     $args['open_to'] = exclusion_ids(array($args['open_to']))[0] ?? 0;
+    // A malformed saved root must not silently widen a scoped tree to all pages.
+    $args['root'] = empty($args['root']) ? 0 : (exclusion_ids(array($args['root']))[0] ?? -1);
     return $args;
+}
+
+/** Traverse original ancestry, including hidden nodes, with cycle protection. */
+function page_descendants($roots, $all) {
+    $children = array();
+    foreach ($all as $id => $page) { $children[(int) $page->post_parent][] = $id; }
+    $descendants = array();
+    $pending = $roots;
+    while ($pending) {
+        $id = array_pop($pending);
+        if (isset($descendants[$id])) { continue; }
+        $descendants[$id] = true;
+        foreach ($children[$id] ?? array() as $child) { $pending[] = $child; }
+    }
+    return $descendants;
 }
 
 /**
@@ -73,9 +90,15 @@ function pages_hierarchy($args = array()) {
         if (is_public_page($page)) { $pages[$page->ID] = $page; }
     }
 
+    if ($args['root']) {
+        if (!isset($pages[$args['root']])) { return array('pages' => array(), 'parents' => array(), 'children' => array(0 => array())); }
+        $scope = page_descendants(array($args['root']), $all);
+        $pages = array_intersect_key($pages, $scope);
+    }
+
     $parents = array();
     foreach ($pages as $id => $page) {
-        $parent = (int) $page->post_parent;
+        $parent = $id === $args['root'] ? 0 : (int) $page->post_parent;
         $seen = array((int) $id => true);
         while ($parent > 0 && !isset($pages[$parent])) {
             if (isset($seen[$parent]) || !isset($all[$parent])) {
@@ -176,7 +199,7 @@ function render_pages($args = array()) {
     ?>
     <nav class="ctrees ctrees-pages-tree" aria-label="<?php echo esc_attr($label); ?>">
         <?php if ($show_title) : ?><h2><?php echo esc_html($title); ?></h2><?php endif; ?>
-        <?php if (!$hierarchy['pages']) : ?><p><?php esc_html_e('No published pages yet.', 'content-trees'); ?></p>
+        <?php if (!$hierarchy['pages']) : ?><p><?php echo esc_html($args['root'] ? __('No pages match these settings.', 'content-trees') : __('No published pages yet.', 'content-trees')); ?></p>
         <?php else : ?><ul class="ctrees-pages"><?php
             // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- render_page_items() escapes labels, attributes and URLs at construction; remaining markup is constant.
             echo render_page_items(0, $hierarchy, $current_id, $open_ancestors);
@@ -192,7 +215,7 @@ function render_pages_block($attributes) {
         : __('Pages', 'content-trees');
     return render_pages(array('title' => $title, 'show_title' => $title !== '',
         'sort_by' => $attributes['sortBy'] ?? 'menu_order', 'order' => $attributes['order'] ?? 'ASC',
-        'auto_open' => $attributes['autoOpen'] ?? true));
+        'auto_open' => $attributes['autoOpen'] ?? true, 'root' => $attributes['root'] ?? 0));
 }
 
 function render_pages_shortcode($attributes) {
@@ -200,6 +223,36 @@ function render_pages_shortcode($attributes) {
 }
 
 add_shortcode('content_trees_pages', __NAMESPACE__ . '\\render_pages_shortcode');
+
+add_action('rest_api_init', static function () {
+    register_rest_route('content-trees/v1', '/page-options', array(
+        'methods' => 'GET',
+        'permission_callback' => static function () {
+            return current_user_can('edit_pages') || current_user_can('edit_theme_options');
+        },
+        'args' => array(
+            'search' => array('type' => 'string', 'default' => '', 'maxLength' => 200),
+            'include' => array('type' => 'string', 'pattern' => '^[0-9,]*$', 'default' => ''),
+        ),
+        'callback' => static function ($request) {
+            $args = array('post_type' => 'page', 'post_status' => 'publish', 'has_password' => false,
+                'posts_per_page' => 20, 'no_found_rows' => true, 'orderby' => array('title' => 'ASC', 'ID' => 'ASC'),
+                'update_post_meta_cache' => false, 'update_post_term_cache' => false);
+            if ($request['include'] !== '') {
+                $args['post__in'] = exclusion_ids($request['include']);
+                if (!$args['post__in']) { return rest_ensure_response(array('items' => array())); }
+                $args['posts_per_page'] = -1;
+            } else {
+                $args['s'] = $request['search'];
+                $args['search_columns'] = array('post_title');
+            }
+            $query = new \WP_Query($args);
+            return rest_ensure_response(array('items' => array_map(static function ($page) {
+                return array('id' => $page->ID, 'label' => page_label($page), 'url' => esc_url_raw(get_permalink($page)));
+            }, array_values(array_filter($query->posts, __NAMESPACE__ . '\\is_public_page')))));
+        },
+    ));
+});
 
 require_once __DIR__ . '/class-pages-widget.php';
 add_action('widgets_init', static function () {

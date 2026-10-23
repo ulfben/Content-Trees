@@ -23,6 +23,7 @@
             const selected = root.querySelector('.ctrees-selected-posts');
             const results = root.querySelector('.ctrees-search-results');
             const status = root.querySelector('.ctrees-search-status');
+            const single = root.dataset.single === '1';
             let timer, revision = 0;
             const ids = () => saved.value.split(',').filter(Boolean).map(Number);
             function persist(values) {
@@ -32,7 +33,7 @@
             root.addEventListener('click', event => {
                 const button = event.target.closest('[data-remove-id]');
                 if (!button) return;
-                persist(ids().filter(id => id !== Number(button.dataset.removeId)));
+                persist(single ? [] : ids().filter(id => id !== Number(button.dataset.removeId)));
                 button.closest('li').remove();
                 input.focus();
             });
@@ -44,18 +45,20 @@
                 if (!input.value.trim()) return;
                 timer = setTimeout(async () => {
                     try {
-                        const data = await wp.apiFetch({path: '/content-trees/v1/post-options?search=' + encodeURIComponent(input.value)});
+                        const endpoint = root.dataset.endpoint || '/content-trees/v1/post-options';
+                        const data = await wp.apiFetch({path: endpoint + '?search=' + encodeURIComponent(input.value)});
                         if (current !== revision || !root.isConnected) return;
                         status.textContent = data.items.length ? root.dataset.found : root.dataset.empty;
-                        data.items.filter(item => !ids().includes(item.id)).forEach(item => {
+                        data.items.filter(item => single || !ids().includes(item.id)).forEach(item => {
                             const li = document.createElement('li');
                             const button = document.createElement('button');
                             button.type = 'button';
                             button.className = 'button-link';
                             button.textContent = item.label + ' (#' + item.id + ')';
                             button.addEventListener('click', () => {
-                                if (ids().includes(item.id)) return;
-                                persist([...ids(), item.id]);
+                                if (!single && ids().includes(item.id)) return;
+                                persist(single ? [item.id] : [...ids(), item.id]);
+                                if (single) selected.replaceChildren();
                                 const chosen = document.createElement('li');
                                 const remove = document.createElement('button');
                                 remove.type = 'button';

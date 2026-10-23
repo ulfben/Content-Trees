@@ -37,6 +37,7 @@ class Pages_Widget extends \WP_Widget {
         <p><label for="<?php echo esc_attr($this->get_field_id('title')); ?>"><?php esc_html_e('Title:', 'content-trees'); ?></label>
         <input class="widefat" id="<?php echo esc_attr($this->get_field_id('title')); ?>" name="<?php echo esc_attr($this->get_field_name('title')); ?>" type="text" value="<?php echo esc_attr($title); ?>"></p>
         <p class="description"><?php esc_html_e('Leave blank to hide the heading.', 'content-trees'); ?></p>
+        <?php $this->page_selector($instance['root']); ?>
         <p><label for="<?php echo esc_attr($this->get_field_id('sort_by')); ?>"><?php esc_html_e('Sort by', 'content-trees'); ?></label>
         <select class="ctrees-page-sort" id="<?php echo esc_attr($this->get_field_id('sort_by')); ?>" name="<?php echo esc_attr($this->get_field_name('sort_by')); ?>">
             <option value="menu_order" <?php selected($instance['sort_by'], 'menu_order'); ?>><?php esc_html_e('Menu order', 'content-trees'); ?></option>
@@ -54,7 +55,29 @@ class Pages_Widget extends \WP_Widget {
     }
 
     public function update($new_instance, $old_instance) {
-        $instance = pages_options(array_merge(array('title' => '', 'auto_open' => false), $new_instance));
-        return array_intersect_key($instance, array_flip(array('title', 'sort_by', 'order', 'auto_open')));
+        $instance = pages_options(array_merge(array('title' => '', 'root' => 0, 'auto_open' => false), $new_instance));
+        return array_intersect_key($instance, array_flip(array('title', 'root', 'sort_by', 'order', 'auto_open')));
+    }
+
+    /** Render the searchable, single-page starting-root selector. */
+    private function page_selector($root) {
+        $root = (int) $root;
+        $page = $root > 0 ? get_post($root) : null;
+        $label = $root ? (is_public_page($page) ? page_label($page) . ' (#' . $root . ')' : '#' . $root) : '';
+        ?>
+        <div class="ctrees-exclusions" data-endpoint="/content-trees/v1/page-options" data-single="1" data-remove="<?php esc_attr_e('Clear start page', 'content-trees'); ?>" data-error="<?php esc_attr_e('Search failed. Change the search to try again.', 'content-trees'); ?>" data-empty="<?php esc_attr_e('No matching public pages.', 'content-trees'); ?>" data-found="<?php esc_attr_e('Select a page to start this tree. Refine your search if needed.', 'content-trees'); ?>">
+            <p><label for="<?php echo esc_attr($this->get_field_id('root_search')); ?>"><?php esc_html_e('Start at page', 'content-trees'); ?></label>
+            <input type="search" class="widefat ctrees-post-search" id="<?php echo esc_attr($this->get_field_id('root_search')); ?>" maxlength="200"></p>
+            <p class="description"><?php esc_html_e('Show the selected page and its descendants as the tree root.', 'content-trees'); ?></p>
+            <input type="hidden" class="ctrees-excluded-ids" name="<?php echo esc_attr($this->get_field_name('root')); ?>" value="<?php echo esc_attr($root); ?>">
+            <ul class="ctrees-selected-posts">
+                <?php if ($root) : ?>
+                <li><button type="button" class="button-link" data-remove-id="<?php echo esc_attr($root); ?>"><?php echo esc_html(__('Clear start page', 'content-trees') . ': ' . $label); ?></button></li>
+                <?php endif; ?>
+            </ul>
+            <p class="ctrees-search-status" role="status"></p>
+            <ul class="ctrees-search-results"></ul>
+        </div>
+        <?php
     }
 }
