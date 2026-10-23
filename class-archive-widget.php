@@ -7,7 +7,7 @@ defined('ABSPATH') || exit;
 class Archive_Widget extends \WP_Widget {
     public function __construct() {
         parent::__construct('ctrees_archive', __('Content Trees: Archive', 'content-trees'), array(
-            'description' => __('Experimental archive with on-demand post titles.', 'content-trees'),
+            'description' => __('A collapsible archive with on-demand post titles.', 'content-trees'),
         ));
     }
 

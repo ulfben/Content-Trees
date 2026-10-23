@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: Content Trees
- * Description: Collapsible archive trees with on-demand post loading, live editor previews and keyboard-friendly navigation.
- * Version: 0.8.0-alpha.1
+ * Description: Collapsible archive and page trees with live editor previews and keyboard-friendly navigation.
+ * Version: 0.8.0
  * Requires at least: 6.3
  * Requires PHP: 7.4
  * License: GPL-2.0-or-later
@@ -13,7 +13,7 @@ namespace ContentTrees;
 
 defined('ABSPATH') || exit;
 
-const VERSION = '0.8.0-alpha.1';
+const VERSION = '0.8.0';
 
 function register_assets() {
     wp_register_style('content-trees', plugins_url('archive.css', __FILE__), array(), VERSION);
