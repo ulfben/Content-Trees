@@ -167,9 +167,10 @@ function taxonomy_data($taxonomy, $args = array()) {
         $data['children'][$data['parents'][$id]][] = $id;
     }
     if ($args['sort_by'] === 'count') {
+        $counts = $data['counts'];
         foreach ($data['children'] as &$siblings) {
-            usort($siblings, static function ($a, $b) use ($data, $args) {
-                $comparison = $data['counts'][$a] <=> $data['counts'][$b];
+            usort($siblings, static function ($a, $b) use ($counts, $args) {
+                $comparison = $counts[$a] <=> $counts[$b];
                 return $comparison ? ($args['order'] === 'DESC' ? -$comparison : $comparison) : ($a <=> $b);
             });
         }
@@ -222,9 +223,24 @@ function render_taxonomy($taxonomy, $args = array()) {
         while ($id && !isset($open[$id])) { $open[$id] = true; $id = $data['parents'][$id]; }
     }
     wp_enqueue_style('content-trees');
+    wp_enqueue_script('content-trees-taxonomy');
     $label = $args['title'] !== '' ? $args['title'] : taxonomy_title($taxonomy);
-    $html = '<nav class="ctrees ctrees-taxonomy-tree" data-taxonomy="' . esc_attr($taxonomy) . '" aria-label="' . esc_attr($label) . '">';
+    $messages = $taxonomy === 'category'
+        ? array('expanded' => __('All category branches expanded.', 'content-trees'), 'collapsed' => __('All category branches collapsed.', 'content-trees'))
+        : array('expanded' => __('All tag branches expanded.', 'content-trees'), 'collapsed' => __('All tag branches collapsed.', 'content-trees'));
+    $html = '<nav class="ctrees ctrees-taxonomy-tree" data-taxonomy="' . esc_attr($taxonomy) . '" aria-label="' . esc_attr($label)
+        . '" data-close-siblings="' . ($args['close_siblings'] ? '1' : '0') . '" data-taxonomy-messages="' . esc_attr(wp_json_encode($messages)) . '">';
     if ($args['show_title']) { $html .= '<h2>' . esc_html($args['title']) . '</h2>'; }
+    $has_branches = false;
+    foreach ($data['terms'] as $id => $term) {
+        if (!empty($data['children'][$id]) || ($args['show_posts'] && !empty($data['memberships'][$id]))) { $has_branches = true; break; }
+    }
+    if ($args['show_controls'] && $has_branches) {
+        $html .= '<div class="ctrees-controls" role="group" aria-label="' . esc_attr($taxonomy === 'category'
+            ? __('Category controls', 'content-trees') : __('Tag controls', 'content-trees')) . '" hidden>'
+            . '<button type="button" data-ctrees-action="open">' . esc_html__('Open All', 'content-trees') . '</button><span aria-hidden="true"> | </span>'
+            . '<button type="button" data-ctrees-action="close">' . esc_html__('Close All', 'content-trees') . '</button></div>';
+    }
     if ($data['terms']) {
         $html .= '<ul class="ctrees-terms">' . render_taxonomy_items(0, $data, $current_term, $current_post, $open, $args) . '</ul>';
     } else {
@@ -254,6 +270,7 @@ function register_taxonomy_tree($taxonomy, $name, $widget) {
 }
 
 add_action('init', static function () {
+    wp_register_script('content-trees-taxonomy', plugins_url('taxonomy.js', __FILE__), array(), VERSION, true);
     wp_register_script('content-trees-taxonomy-editor', plugins_url('taxonomy-editor.js', __FILE__),
         array('wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-server-side-render'), VERSION, true);
 });
@@ -274,7 +291,7 @@ add_action('wp_enqueue_scripts', static function () {
             if (isset($widget['content']) && has_block('content-trees/' . $name, $widget['content'])
                 && is_active_widget(false, 'block-' . $number, 'block', true)) { $has_tree = true; break; }
         }
-        if ($has_tree) { wp_enqueue_style('content-trees'); return; }
+        if ($has_tree) { wp_enqueue_style('content-trees'); wp_enqueue_script('content-trees-taxonomy'); return; }
     }
 });
 
