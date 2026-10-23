@@ -39,6 +39,11 @@ function is_public_page($page) {
         && $page->post_status === 'publish' && $page->post_password === '';
 }
 
+/** Supported sibling sort fields and their database columns. */
+function pages_sort_columns() {
+    return array('menu_order' => 'menu_order', 'title' => 'post_title', 'date' => 'post_date', 'modified' => 'post_modified');
+}
+
 /** Keep block, widget and shortcode defaults and normalization together. */
 function pages_options($args = array()) {
     $defaults = array('title' => __('Pages', 'content-trees'), 'show_title' => true,
@@ -47,7 +52,7 @@ function pages_options($args = array()) {
     $args = array_intersect_key(wp_parse_args($args, $defaults), $defaults);
     $args['title'] = is_string($args['title']) ? sanitize_text_field($args['title']) : $defaults['title'];
     $args['show_title'] = enabled($args['show_title']) && $args['title'] !== '';
-    $args['sort_by'] = $args['sort_by'] === 'title' ? 'title' : 'menu_order';
+    $args['sort_by'] = in_array($args['sort_by'], array_keys(pages_sort_columns()), true) ? $args['sort_by'] : 'menu_order';
     $args['order'] = $args['order'] === 'DESC' ? 'DESC' : 'ASC';
     $args['auto_open'] = enabled($args['auto_open']);
     $args['open_to'] = exclusion_ids(array($args['open_to']))[0] ?? 0;
@@ -84,7 +89,7 @@ function pages_data($sort_by, $order) {
     if (!is_array($data) || !isset($data['ids'], $data['parents'])) {
         // Canonical ancestry contains no visitor-dependent query filters. Read
         // only the fields needed for eligibility and original parent edges.
-        $column = $sort_by === 'title' ? 'post_title' : 'menu_order';
+        $column = pages_sort_columns()[$sort_by] ?? 'menu_order';
         if ($order === 'DESC') {
             // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Prepared ancestry query; only IDs/edges are cached below, with page-change invalidation.
             $rows = $wpdb->get_results($wpdb->prepare("SELECT ID, post_parent, post_status, post_password FROM $wpdb->posts WHERE post_type = %s ORDER BY %i DESC, ID ASC", 'page', $column));
@@ -115,7 +120,7 @@ function pages_data($sort_by, $order) {
 // trash/restore and deletion. All order variants share the original parent graph.
 add_action('clean_post_cache', static function ($id, $post) {
     if ($post->post_type !== 'page') { return; }
-    foreach (array('menu_order', 'title') as $sort_by) {
+    foreach (array_keys(pages_sort_columns()) as $sort_by) {
         foreach (array('ASC', 'DESC') as $order) { delete_transient('ctrees_pages_v1_' . $sort_by . '_' . $order); }
     }
 }, 10, 2);

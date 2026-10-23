@@ -4,7 +4,7 @@ Tags: archives, pages, navigation, widget, block
 Requires at least: 6.3
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 0.8.0
+Stable tag: 0.8.1
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -21,7 +21,7 @@ Version 0.8 adds page trees alongside archive trees. Category and tag trees are 
 = Available now =
 
 * **Archive trees:** Browse posts by year and month, or display a simple list of months.
-* **Page trees:** Follow page hierarchies, start at a selected page, sort by title or menu order, and exclude entire branches.
+* **Page trees:** Follow page hierarchies, choose a starting page, exclude branches, and sort by title, menu order, publication date or last update.
 * **On-demand loading:** Posts are loaded only when a month is expanded, with no pagination or arbitrary limits. Previously loaded titles are cached for faster navigation.
 * **Archive display:** Show or hide posts and post counts, choose newest or oldest first, and optionally link years and months to their archives.
 * **Current-item navigation:** Highlight the current post or page and optionally expand its branch automatically.
@@ -58,7 +58,7 @@ Yes. Use `[content_trees_archive title="Archives"]` or `[content_trees_pages tit
 
 = Which features are not included? =
 
-Page counts, a root that follows the current page, and remembering expanded branches are not available. Legacy icons/connector lines, title truncation, author/custom-field filters, page allowlists and additional page sort modes are not carried over.
+Page counts, a root that follows the current page, and remembering expanded branches are not available. Legacy icons/connector lines, title truncation, author/custom-field filters and page allowlists are not carried over.
 
 == Screenshots ==
 
@@ -66,6 +66,10 @@ Page counts, a root that follows the current page, and remembering expanded bran
 2. An archive tree on a sample blog, expanded to the current post with its title highlighted.
 
 == Changelog ==
+
+= 0.8.1 =
+
+* Sort page trees by Published date or Last updated, with Oldest first / Newest first ordering.
 
 = 0.8.0 =
 

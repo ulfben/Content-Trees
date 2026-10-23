@@ -9,8 +9,9 @@
             if (!order) return;
             initialized.add(sort);
             function labels() {
-                order.querySelector('[value="ASC"]').textContent = sort.value === 'title' ? order.dataset.titleAsc : order.dataset.asc;
-                order.querySelector('[value="DESC"]').textContent = sort.value === 'title' ? order.dataset.titleDesc : order.dataset.desc;
+                const dateSort = ['date', 'modified'].includes(sort.value);
+                order.querySelector('[value="ASC"]').textContent = sort.value === 'title' ? order.dataset.titleAsc : (dateSort ? order.dataset.dateAsc : order.dataset.asc);
+                order.querySelector('[value="DESC"]').textContent = sort.value === 'title' ? order.dataset.titleDesc : (dateSort ? order.dataset.dateDesc : order.dataset.desc);
             }
             sort.addEventListener('change', labels);
             labels();

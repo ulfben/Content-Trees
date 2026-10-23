@@ -71,12 +71,15 @@
                             help: __('Show the selected page and its child pages. Leave empty to show all pages.', 'content-trees'),
                             value: attributes.root ? [attributes.root] : [], onChange: ids => setAttributes({root: ids[0] || 0})}),
                         el(SelectControl, {label: __('Sort by', 'content-trees'), value: attributes.sortBy,
-                            options: [{label: __('Menu order', 'content-trees'), value: 'menu_order'}, {label: __('Title', 'content-trees'), value: 'title'}],
+                            options: [{label: __('Menu order', 'content-trees'), value: 'menu_order'}, {label: __('Title', 'content-trees'), value: 'title'},
+                                {label: __('Published date', 'content-trees'), value: 'date'}, {label: __('Last updated', 'content-trees'), value: 'modified'}],
                             onChange: sortBy => setAttributes({sortBy})}),
                         el(SelectControl, {label: __('Order', 'content-trees'), value: attributes.order,
                             options: attributes.sortBy === 'title'
                                 ? [{label: __('A–Z', 'content-trees'), value: 'ASC'}, {label: __('Z–A', 'content-trees'), value: 'DESC'}]
-                                : [{label: __('Ascending', 'content-trees'), value: 'ASC'}, {label: __('Descending', 'content-trees'), value: 'DESC'}],
+                                : ['date', 'modified'].includes(attributes.sortBy)
+                                    ? [{label: __('Oldest first', 'content-trees'), value: 'ASC'}, {label: __('Newest first', 'content-trees'), value: 'DESC'}]
+                                    : [{label: __('Ascending', 'content-trees'), value: 'ASC'}, {label: __('Descending', 'content-trees'), value: 'DESC'}],
                             onChange: order => setAttributes({order})}),
                         el(ToggleControl, {label: __('Show Open All / Close All', 'content-trees'),
                             checked: attributes.showControls, onChange: showControls => setAttributes({showControls})}),

@@ -33,6 +33,7 @@ class Pages_Widget extends \WP_Widget {
     public function form($instance) {
         $instance = pages_options($instance);
         $title = $instance['title'];
+        $date_sort = in_array($instance['sort_by'], array('date', 'modified'), true);
         ?>
         <p><label for="<?php echo esc_attr($this->get_field_id('title')); ?>"><?php esc_html_e('Title:', 'content-trees'); ?></label>
         <input class="widefat" id="<?php echo esc_attr($this->get_field_id('title')); ?>" name="<?php echo esc_attr($this->get_field_name('title')); ?>" type="text" value="<?php echo esc_attr($title); ?>"></p>
@@ -42,11 +43,13 @@ class Pages_Widget extends \WP_Widget {
         <select class="ctrees-page-sort" id="<?php echo esc_attr($this->get_field_id('sort_by')); ?>" name="<?php echo esc_attr($this->get_field_name('sort_by')); ?>">
             <option value="menu_order" <?php selected($instance['sort_by'], 'menu_order'); ?>><?php esc_html_e('Menu order', 'content-trees'); ?></option>
             <option value="title" <?php selected($instance['sort_by'], 'title'); ?>><?php esc_html_e('Title', 'content-trees'); ?></option>
+            <option value="date" <?php selected($instance['sort_by'], 'date'); ?>><?php esc_html_e('Published date', 'content-trees'); ?></option>
+            <option value="modified" <?php selected($instance['sort_by'], 'modified'); ?>><?php esc_html_e('Last updated', 'content-trees'); ?></option>
         </select></p>
         <p><label for="<?php echo esc_attr($this->get_field_id('order')); ?>"><?php esc_html_e('Order', 'content-trees'); ?></label>
-        <select class="ctrees-page-order" id="<?php echo esc_attr($this->get_field_id('order')); ?>" name="<?php echo esc_attr($this->get_field_name('order')); ?>" data-asc="<?php esc_attr_e('Ascending', 'content-trees'); ?>" data-desc="<?php esc_attr_e('Descending', 'content-trees'); ?>" data-title-asc="<?php esc_attr_e('A–Z', 'content-trees'); ?>" data-title-desc="<?php esc_attr_e('Z–A', 'content-trees'); ?>">
-            <option value="ASC" <?php selected($instance['order'], 'ASC'); ?>><?php echo esc_html($instance['sort_by'] === 'title' ? __('A–Z', 'content-trees') : __('Ascending', 'content-trees')); ?></option>
-            <option value="DESC" <?php selected($instance['order'], 'DESC'); ?>><?php echo esc_html($instance['sort_by'] === 'title' ? __('Z–A', 'content-trees') : __('Descending', 'content-trees')); ?></option>
+        <select class="ctrees-page-order" id="<?php echo esc_attr($this->get_field_id('order')); ?>" name="<?php echo esc_attr($this->get_field_name('order')); ?>" data-asc="<?php esc_attr_e('Ascending', 'content-trees'); ?>" data-desc="<?php esc_attr_e('Descending', 'content-trees'); ?>" data-title-asc="<?php esc_attr_e('A–Z', 'content-trees'); ?>" data-title-desc="<?php esc_attr_e('Z–A', 'content-trees'); ?>" data-date-asc="<?php esc_attr_e('Oldest first', 'content-trees'); ?>" data-date-desc="<?php esc_attr_e('Newest first', 'content-trees'); ?>">
+            <option value="ASC" <?php selected($instance['order'], 'ASC'); ?>><?php echo esc_html($instance['sort_by'] === 'title' ? __('A–Z', 'content-trees') : ($date_sort ? __('Oldest first', 'content-trees') : __('Ascending', 'content-trees'))); ?></option>
+            <option value="DESC" <?php selected($instance['order'], 'DESC'); ?>><?php echo esc_html($instance['sort_by'] === 'title' ? __('Z–A', 'content-trees') : ($date_sort ? __('Newest first', 'content-trees') : __('Descending', 'content-trees'))); ?></option>
         </select></p>
         <p><input type="checkbox" id="<?php echo esc_attr($this->get_field_id('show_controls')); ?>" name="<?php echo esc_attr($this->get_field_name('show_controls')); ?>" value="1" <?php checked($instance['show_controls']); ?>>
         <label for="<?php echo esc_attr($this->get_field_id('show_controls')); ?>"><?php esc_html_e('Show Open All / Close All', 'content-trees'); ?></label></p>
