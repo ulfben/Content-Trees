@@ -9,21 +9,32 @@ function taxonomy_title($taxonomy) {
 }
 
 function taxonomy_options($taxonomy, $args = array()) {
-    $defaults = array('title' => taxonomy_title($taxonomy), 'show_title' => true, 'show_posts' => true);
+    $defaults = array('title' => taxonomy_title($taxonomy), 'show_title' => true, 'show_posts' => true,
+        'root' => 0, 'excluded_terms' => array(), 'excluded_posts' => array(), 'sort_by' => 'name', 'order' => 'ASC',
+        'post_sort_by' => 'date', 'post_order' => 'DESC', 'show_counts' => true, 'hide_empty' => true,
+        'auto_open' => true, 'open_to' => 0, 'show_controls' => false, 'close_siblings' => false);
     $args = array_intersect_key(wp_parse_args($args, $defaults), $defaults);
     $args['title'] = is_string($args['title']) ? sanitize_text_field($args['title']) : $defaults['title'];
     $args['show_title'] = enabled($args['show_title']) && $args['title'] !== '';
-    $args['show_posts'] = enabled($args['show_posts']);
+    foreach (array('show_posts', 'show_counts', 'hide_empty', 'auto_open', 'show_controls', 'close_siblings') as $flag) {
+        $args[$flag] = enabled($args[$flag]);
+    }
+    $args['root'] = $taxonomy !== 'category' || empty($args['root']) ? 0 : (exclusion_ids(array($args['root']))[0] ?? -1);
+    $args['open_to'] = exclusion_ids(array($args['open_to']))[0] ?? 0;
+    foreach (array('excluded_terms', 'excluded_posts') as $field) { $args[$field] = exclusion_ids($args[$field]); }
+    $args['sort_by'] = in_array($args['sort_by'], array('name', 'count'), true) ? $args['sort_by'] : 'name';
+    $args['post_sort_by'] = in_array($args['post_sort_by'], array('title', 'date', 'modified'), true) ? $args['post_sort_by'] : 'date';
+    foreach (array('order', 'post_order') as $field) { $args[$field] = $args[$field] === 'DESC' ? 'DESC' : 'ASC'; }
     return $args;
 }
 
 // Preserve database name collation, with a stable ID tie for these queries only.
 add_filter('get_terms_orderby', static function ($orderby, $args) {
-    return !empty($args['ctrees_name_order']) ? $orderby . ' ASC, t.term_id' : $orderby;
+    return !empty($args['ctrees_name_order']) ? $orderby . ($args['ctrees_name_order'] === 'DESC' ? ' DESC' : ' ASC') . ', t.term_id' : $orderby;
 }, 10, 2);
 
 /** Resolve original category ancestry without disclosing filtered parent names. */
-function taxonomy_parents($taxonomy, $terms) {
+function taxonomy_original_parents($taxonomy) {
     global $wpdb;
     $original = array();
     if ($taxonomy === 'category') {
@@ -31,9 +42,26 @@ function taxonomy_parents($taxonomy, $terms) {
         $rows = $wpdb->get_results($wpdb->prepare("SELECT term_id, parent FROM %i WHERE taxonomy = %s", $wpdb->term_taxonomy, $taxonomy));
         foreach ($rows as $row) { $original[(int) $row->term_id] = (int) $row->parent; }
     }
+    return $original;
+}
+
+function taxonomy_descendants($roots, $parents) {
+    $children = $result = array();
+    foreach ($parents as $id => $parent) { $children[$parent][] = $id; }
+    while ($roots) {
+        $id = array_pop($roots);
+        if (isset($result[$id])) { continue; }
+        $result[$id] = true;
+        foreach ($children[$id] ?? array() as $child) { $roots[] = $child; }
+    }
+    return $result;
+}
+
+function taxonomy_parents($taxonomy, $terms, $original = null, $root = 0) {
+    if ($original === null) { $original = taxonomy_original_parents($taxonomy); }
     $parents = array();
     foreach ($terms as $id => $term) {
-        $parent = $taxonomy === 'category' ? (int) $term['term']->parent : 0;
+        $parent = $taxonomy === 'category' && $id !== $root ? (int) $term['term']->parent : 0;
         $seen = array($id => true);
         while ($parent && !isset($terms[$parent])) {
             if (isset($seen[$parent]) || !isset($original[$parent])) { $parent = 0; break; }
@@ -64,12 +92,15 @@ function taxonomy_parents($taxonomy, $terms) {
 }
 
 /** Complete direct memberships; post presentation is optional and prepared last. */
-function taxonomy_data($taxonomy, $show_posts = true) {
+function taxonomy_data($taxonomy, $args = array()) {
     $data = array('terms' => array(), 'parents' => array(), 'children' => array(0 => array()),
         'memberships' => array(), 'counts' => array(), 'posts' => array());
     if (!in_array($taxonomy, array('category', 'post_tag'), true)) { return $data; }
+    // Retain the first slice's internal boolean convenience for existing checks.
+    $args = taxonomy_options($taxonomy, is_bool($args) ? array('show_posts' => $args) : $args);
+    $show_posts = $args['show_posts'];
     $results = get_terms(array('taxonomy' => $taxonomy, 'hide_empty' => false, 'hierarchical' => false,
-        'number' => 0, 'orderby' => 'name', 'order' => 'ASC', 'ctrees_name_order' => true, 'update_term_meta_cache' => false));
+        'number' => 0, 'orderby' => 'name', 'order' => 'ASC', 'ctrees_name_order' => $args['sort_by'] === 'name' ? $args['order'] : 'ASC', 'update_term_meta_cache' => false));
     if (is_wp_error($results)) { return $data; }
     foreach ($results as $term) {
         if (!$term instanceof \WP_Term || $term->taxonomy !== $taxonomy) { continue; }
@@ -80,16 +111,27 @@ function taxonomy_data($taxonomy, $show_posts = true) {
             'label' => $label !== '' ? $label : __('(Untitled)', 'content-trees'));
     }
     if (!$data['terms']) { return $data; }
-    $data['parents'] = taxonomy_parents($taxonomy, $data['terms']);
+    $original = taxonomy_original_parents($taxonomy);
+    if ($args['excluded_terms']) {
+        $excluded = $taxonomy === 'category' ? taxonomy_descendants($args['excluded_terms'], $original) : array_fill_keys($args['excluded_terms'], true);
+        $data['terms'] = array_diff_key($data['terms'], $excluded);
+    }
+    if ($args['root']) {
+        if (!isset($data['terms'][$args['root']])) { $data['terms'] = array(); return $data; }
+        $data['terms'] = array_intersect_key($data['terms'], taxonomy_descendants(array($args['root']), $original));
+    }
+    if (!$data['terms']) { return $data; }
+    $data['parents'] = taxonomy_parents($taxonomy, $data['terms'], $original, $args['root']);
     $query = new \WP_Query(array('post_type' => 'post', 'post_status' => 'publish', 'has_password' => false,
         'posts_per_page' => -1, 'no_found_rows' => true, 'ignore_sticky_posts' => true,
-        'orderby' => array('date' => 'DESC', 'ID' => 'ASC'), 'update_post_meta_cache' => false,
+        'orderby' => $show_posts ? array($args['post_sort_by'] => $args['post_order'], 'ID' => 'ASC') : array('ID' => 'ASC'), 'update_post_meta_cache' => false,
         'update_post_term_cache' => $show_posts,
         'tax_query' => array(array('taxonomy' => $taxonomy, 'terms' => array_keys($data['terms']),
             'field' => 'term_id', 'include_children' => false))));
     $posts = array();
+    $excluded_posts = array_fill_keys($args['excluded_posts'], true);
     foreach ($query->posts as $post) {
-        if (is_public_post($post)) { $posts[(int) $post->ID] = $post; }
+        if (is_public_post($post) && !isset($excluded_posts[$post->ID])) { $posts[(int) $post->ID] = $post; }
     }
     $direct = array();
     if ($posts) {
@@ -120,23 +162,32 @@ function taxonomy_data($taxonomy, $show_posts = true) {
         if ($show_posts && isset($direct[$id])) { $data['posts'][$id] = post_node($post); }
     }
     foreach ($data['terms'] as $id => $term) {
-        if (empty($unique[$id])) { unset($data['terms'][$id], $data['parents'][$id]); continue; }
-        $data['counts'][$id] = count($unique[$id]);
+        if ($args['hide_empty'] && empty($unique[$id])) { unset($data['terms'][$id], $data['parents'][$id]); continue; }
+        $data['counts'][$id] = count($unique[$id] ?? array());
         $data['children'][$data['parents'][$id]][] = $id;
+    }
+    if ($args['sort_by'] === 'count') {
+        foreach ($data['children'] as &$siblings) {
+            usort($siblings, static function ($a, $b) use ($data, $args) {
+                $comparison = $data['counts'][$a] <=> $data['counts'][$b];
+                return $comparison ? ($args['order'] === 'DESC' ? -$comparison : $comparison) : ($a <=> $b);
+            });
+        }
+        unset($siblings);
     }
     return $data;
 }
 
-function render_taxonomy_items($parent, $data, $current_term, $current_post, $open, $show_posts) {
+function render_taxonomy_items($parent, $data, $current_term, $current_post, $open, $args) {
     $html = '';
     foreach ($data['children'][$parent] ?? array() as $id) {
         $term = $data['terms'][$id];
         $link = '<a class="ctrees-term-link" href="' . esc_url($term['url']) . '"'
-            . ($id === $current_term ? ' aria-current="page"' : '') . '>' . esc_html($term['label']) . '</a>'
-            . '<span class="ctrees-count">(' . esc_html(number_format_i18n($data['counts'][$id])) . ')</span>';
-        $children = render_taxonomy_items($id, $data, $current_term, $current_post, $open, $show_posts);
+            . ($id === $current_term ? ' aria-current="page"' : '') . '>' . esc_html($term['label']) . '</a>';
+        if ($args['show_counts']) { $link .= '<span class="ctrees-count">(' . esc_html(number_format_i18n($data['counts'][$id])) . ')</span>'; }
+        $children = render_taxonomy_items($id, $data, $current_term, $current_post, $open, $args);
         $post_list = '';
-        if ($show_posts) {
+        if ($args['show_posts']) {
             foreach ($data['memberships'][$id] ?? array() as $post_id => $unused) {
                 $post_list .= post_link($data['posts'][$post_id], $current_post);
             }
@@ -159,14 +210,15 @@ function render_taxonomy_items($parent, $data, $current_term, $current_post, $op
 function render_taxonomy($taxonomy, $args = array()) {
     if (!in_array($taxonomy, array('category', 'post_tag'), true)) { return ''; }
     $args = taxonomy_options($taxonomy, $args);
-    $data = taxonomy_data($taxonomy, $args['show_posts']);
+    $data = taxonomy_data($taxonomy, $args);
     $queried = get_queried_object();
     $current_term = (($taxonomy === 'category' && is_category()) || ($taxonomy === 'post_tag' && is_tag()))
         && $queried instanceof \WP_Term && $queried->taxonomy === $taxonomy ? (int) $queried->term_id : 0;
     $current_post = is_singular('post') && is_public_post($queried) ? (int) $queried->ID : 0;
     $open = array();
+    $explicit = isset($data['terms'][$args['open_to']]) ? $args['open_to'] : 0;
     foreach ($data['terms'] as $id => $term) {
-        if ($id !== $current_term && !isset($data['memberships'][$id][$current_post])) { continue; }
+        if ($explicit ? $id !== $explicit : (!$args['auto_open'] || ($id !== $current_term && !isset($data['memberships'][$id][$current_post])))) { continue; }
         while ($id && !isset($open[$id])) { $open[$id] = true; $id = $data['parents'][$id]; }
     }
     wp_enqueue_style('content-trees');
@@ -174,10 +226,11 @@ function render_taxonomy($taxonomy, $args = array()) {
     $html = '<nav class="ctrees ctrees-taxonomy-tree" data-taxonomy="' . esc_attr($taxonomy) . '" aria-label="' . esc_attr($label) . '">';
     if ($args['show_title']) { $html .= '<h2>' . esc_html($args['title']) . '</h2>'; }
     if ($data['terms']) {
-        $html .= '<ul class="ctrees-terms">' . render_taxonomy_items(0, $data, $current_term, $current_post, $open, $args['show_posts']) . '</ul>';
+        $html .= '<ul class="ctrees-terms">' . render_taxonomy_items(0, $data, $current_term, $current_post, $open, $args) . '</ul>';
     } else {
-        $html .= '<p>' . esc_html($taxonomy === 'category' ? __('No categories with published posts yet.', 'content-trees')
-            : __('No tags with published posts yet.', 'content-trees')) . '</p>';
+        $filtered = $args['root'] || $args['excluded_terms'] || $args['excluded_posts'];
+        $html .= '<p>' . esc_html($filtered ? __('No terms match these settings.', 'content-trees') : ($taxonomy === 'category'
+            ? __('No categories with published posts yet.', 'content-trees') : __('No tags with published posts yet.', 'content-trees'))) . '</p>';
     }
     return $html . '</nav>';
 }
