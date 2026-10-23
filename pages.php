@@ -38,7 +38,8 @@ function is_public_page($page) {
 /** Keep block, widget and shortcode defaults and normalization together. */
 function pages_options($args = array()) {
     $defaults = array('title' => __('Pages', 'content-trees'), 'show_title' => true,
-        'sort_by' => 'menu_order', 'order' => 'ASC', 'auto_open' => true, 'open_to' => 0, 'root' => 0);
+        'sort_by' => 'menu_order', 'order' => 'ASC', 'auto_open' => true, 'open_to' => 0, 'root' => 0,
+        'excluded_pages' => array());
     $args = array_intersect_key(wp_parse_args($args, $defaults), $defaults);
     $args['title'] = is_string($args['title']) ? sanitize_text_field($args['title']) : $defaults['title'];
     $args['show_title'] = enabled($args['show_title']) && $args['title'] !== '';
@@ -48,6 +49,7 @@ function pages_options($args = array()) {
     $args['open_to'] = exclusion_ids(array($args['open_to']))[0] ?? 0;
     // A malformed saved root must not silently widen a scoped tree to all pages.
     $args['root'] = empty($args['root']) ? 0 : (exclusion_ids(array($args['root']))[0] ?? -1);
+    $args['excluded_pages'] = exclusion_ids($args['excluded_pages']);
     return $args;
 }
 
@@ -90,6 +92,10 @@ function pages_hierarchy($args = array()) {
         if (is_public_page($page)) { $pages[$page->ID] = $page; }
     }
 
+    // Exclude original subtrees before promotion, including hidden intermediates.
+    if ($args['excluded_pages']) {
+        $pages = array_diff_key($pages, page_descendants($args['excluded_pages'], $all));
+    }
     if ($args['root']) {
         if (!isset($pages[$args['root']])) { return array('pages' => array(), 'parents' => array(), 'children' => array(0 => array())); }
         $scope = page_descendants(array($args['root']), $all);
@@ -199,7 +205,7 @@ function render_pages($args = array()) {
     ?>
     <nav class="ctrees ctrees-pages-tree" aria-label="<?php echo esc_attr($label); ?>">
         <?php if ($show_title) : ?><h2><?php echo esc_html($title); ?></h2><?php endif; ?>
-        <?php if (!$hierarchy['pages']) : ?><p><?php echo esc_html($args['root'] ? __('No pages match these settings.', 'content-trees') : __('No published pages yet.', 'content-trees')); ?></p>
+        <?php if (!$hierarchy['pages']) : ?><p><?php echo esc_html($args['root'] || $args['excluded_pages'] ? __('No pages match these settings.', 'content-trees') : __('No published pages yet.', 'content-trees')); ?></p>
         <?php else : ?><ul class="ctrees-pages"><?php
             // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- render_page_items() escapes labels, attributes and URLs at construction; remaining markup is constant.
             echo render_page_items(0, $hierarchy, $current_id, $open_ancestors);
@@ -215,7 +221,8 @@ function render_pages_block($attributes) {
         : __('Pages', 'content-trees');
     return render_pages(array('title' => $title, 'show_title' => $title !== '',
         'sort_by' => $attributes['sortBy'] ?? 'menu_order', 'order' => $attributes['order'] ?? 'ASC',
-        'auto_open' => $attributes['autoOpen'] ?? true, 'root' => $attributes['root'] ?? 0));
+        'auto_open' => $attributes['autoOpen'] ?? true, 'root' => $attributes['root'] ?? 0,
+        'excluded_pages' => $attributes['exclude'] ?? array()));
 }
 
 function render_pages_shortcode($attributes) {

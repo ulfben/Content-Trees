@@ -83,6 +83,11 @@
                             checked: attributes.autoOpen, onChange: autoOpen => setAttributes({autoOpen})})
                     )
                 ),
+                el(InspectorControls, {group: 'advanced'},
+                    el(PageSelector, {label: __('Exclude pages', 'content-trees'),
+                        help: __('Hide selected pages and all their child pages from this tree.', 'content-trees'),
+                        multiple: true, value: attributes.exclude, onChange: exclude => setAttributes({exclude})})
+                ),
                 el('div', useBlockProps(),
                     el(Disabled, null, el(ServerSideRender, {block: 'content-trees/pages', attributes: {...attributes, title}})),
                     el('p', {className: 'description'}, __('Preview: readers can open page branches on your site.', 'content-trees'))

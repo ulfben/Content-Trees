@@ -12,6 +12,7 @@
     "attributes": {
         "title": { "type": "string", "default": "Pages" },
         "root": { "type": "integer", "minimum": 0, "default": 0 },
+        "exclude": { "type": "array", "items": { "type": "integer" }, "default": [] },
         "sortBy": { "type": "string", "enum": ["menu_order", "title"], "default": "menu_order" },
         "order": { "type": "string", "enum": ["ASC", "DESC"], "default": "ASC" },
         "autoOpen": { "type": "boolean", "default": true }
