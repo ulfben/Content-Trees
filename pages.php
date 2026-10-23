@@ -62,7 +62,7 @@ function pages_options($args = array()) {
 /** Traverse original ancestry, including hidden nodes, with cycle protection. */
 function page_descendants($roots, $all) {
     $children = array();
-    foreach ($all as $id => $page) { $children[(int) $page->post_parent][] = $id; }
+    foreach ($all as $id => $parent) { $children[$parent][] = $id; }
     $descendants = array();
     $pending = $roots;
     while ($pending) {
@@ -74,29 +74,61 @@ function page_descendants($roots, $all) {
     return $descendants;
 }
 
+/** Cache only IDs and original parent edges; labels and URLs stay request-local. */
+function pages_data($sort_by, $order) {
+    global $wpdb;
+    $key = 'ctrees_pages_v1_' . $sort_by . '_' . $order;
+    $data = get_transient($key);
+    $query_args = array('post_type' => 'page', 'posts_per_page' => -1, 'no_found_rows' => true,
+        'update_post_meta_cache' => false, 'update_post_term_cache' => false);
+    if (!is_array($data) || !isset($data['ids'], $data['parents'])) {
+        // Canonical ancestry contains no visitor-dependent query filters. Read
+        // only the fields needed for eligibility and original parent edges.
+        $column = $sort_by === 'title' ? 'post_title' : 'menu_order';
+        if ($order === 'DESC') {
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Prepared ancestry query; only IDs/edges are cached below, with page-change invalidation.
+            $rows = $wpdb->get_results($wpdb->prepare("SELECT ID, post_parent, post_status, post_password FROM $wpdb->posts WHERE post_type = %s ORDER BY %i DESC, ID ASC", 'page', $column));
+        } else {
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Prepared ancestry query; only IDs/edges are cached below, with page-change invalidation.
+            $rows = $wpdb->get_results($wpdb->prepare("SELECT ID, post_parent, post_status, post_password FROM $wpdb->posts WHERE post_type = %s ORDER BY %i ASC, ID ASC", 'page', $column));
+        }
+        $data = array('ids' => array(), 'parents' => array());
+        foreach ($rows as $page) {
+            $data['parents'][(int) $page->ID] = (int) $page->post_parent;
+            if ($page->post_status === 'publish' && $page->post_password === '') { $data['ids'][] = (int) $page->ID; }
+        }
+        set_transient($key, $data, DAY_IN_SECONDS);
+    }
+    if (!$data['ids']) { return array('pages' => array(), 'parents' => $data['parents']); }
+    // Resolve public nodes afresh, honoring normal page-query filters on every
+    // instance. Neither filtered labels nor descendant permalinks are cached.
+    $query = new \WP_Query(array_merge($query_args, array('post_status' => 'publish', 'has_password' => false,
+        'post__in' => $data['ids'], 'orderby' => 'post__in')));
+    $pages = array();
+    foreach ($query->posts as $page) {
+        if (is_public_page($page)) { $pages[(int) $page->ID] = $page; }
+    }
+    return array('pages' => $pages, 'parents' => $data['parents']);
+}
+
+// Core calls this after create/update, visibility/password/ancestry/order changes,
+// trash/restore and deletion. All order variants share the original parent graph.
+add_action('clean_post_cache', static function ($id, $post) {
+    if ($post->post_type !== 'page') { return; }
+    foreach (array('menu_order', 'title') as $sort_by) {
+        foreach (array('ASC', 'DESC') as $order) { delete_transient('ctrees_pages_v1_' . $sort_by . '_' . $order); }
+    }
+}, 10, 2);
+
 /**
  * Return the complete public page hierarchy, promoting eligible pages around
  * ineligible or missing ancestors without including those ancestors as nodes.
  */
 function pages_hierarchy($args = array()) {
     $args = pages_options($args);
-    $query = new \WP_Query(array(
-        'post_type' => 'page',
-        'post_status' => array_keys(get_post_stati()),
-        'posts_per_page' => -1,
-        'no_found_rows' => true,
-        'orderby' => array($args['sort_by'] => $args['order'], 'ID' => 'ASC'),
-        'update_post_meta_cache' => false,
-        'update_post_term_cache' => false,
-    ));
-
-    $all = array();
-    $pages = array();
-    foreach ($query->posts as $page) {
-        if (!$page instanceof \WP_Post || $page->post_type !== 'page') { continue; }
-        $all[$page->ID] = $page;
-        if (is_public_page($page)) { $pages[$page->ID] = $page; }
-    }
+    $data = pages_data($args['sort_by'], $args['order']);
+    $all = $data['parents'];
+    $pages = $data['pages'];
 
     // Exclude original subtrees before promotion, including hidden intermediates.
     if ($args['excluded_pages']) {
@@ -118,7 +150,7 @@ function pages_hierarchy($args = array()) {
                 break;
             }
             $seen[$parent] = true;
-            $parent = (int) $all[$parent]->post_parent;
+            $parent = $all[$parent];
         }
         $parents[$id] = $parent;
     }
