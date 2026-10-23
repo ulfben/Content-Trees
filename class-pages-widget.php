@@ -48,18 +48,23 @@ class Pages_Widget extends \WP_Widget {
             <option value="ASC" <?php selected($instance['order'], 'ASC'); ?>><?php echo esc_html($instance['sort_by'] === 'title' ? __('A–Z', 'content-trees') : __('Ascending', 'content-trees')); ?></option>
             <option value="DESC" <?php selected($instance['order'], 'DESC'); ?>><?php echo esc_html($instance['sort_by'] === 'title' ? __('Z–A', 'content-trees') : __('Descending', 'content-trees')); ?></option>
         </select></p>
+        <p><input type="checkbox" id="<?php echo esc_attr($this->get_field_id('show_controls')); ?>" name="<?php echo esc_attr($this->get_field_name('show_controls')); ?>" value="1" <?php checked($instance['show_controls']); ?>>
+        <label for="<?php echo esc_attr($this->get_field_id('show_controls')); ?>"><?php esc_html_e('Show Open All / Close All', 'content-trees'); ?></label></p>
         <p><input type="checkbox" id="<?php echo esc_attr($this->get_field_id('auto_open')); ?>" name="<?php echo esc_attr($this->get_field_name('auto_open')); ?>" value="1" <?php checked($instance['auto_open']); ?>>
         <label for="<?php echo esc_attr($this->get_field_id('auto_open')); ?>"><?php esc_html_e('Open the current branch automatically', 'content-trees'); ?></label></p>
         <p class="description"><?php esc_html_e('Open the parent branches when viewing a page in this tree.', 'content-trees'); ?></p>
         <details><summary><?php esc_html_e('Advanced', 'content-trees'); ?></summary>
+            <p><input type="checkbox" id="<?php echo esc_attr($this->get_field_id('close_siblings')); ?>" name="<?php echo esc_attr($this->get_field_name('close_siblings')); ?>" value="1" <?php checked($instance['close_siblings']); ?>>
+            <label for="<?php echo esc_attr($this->get_field_id('close_siblings')); ?>"><?php esc_html_e('Close other branches at the same level', 'content-trees'); ?></label></p>
+            <p class="description"><?php esc_html_e('Opening a branch closes its siblings and their child branches. Open All still opens everything.', 'content-trees'); ?></p>
             <?php $this->page_selector('excluded_pages', $instance['excluded_pages']); ?>
         </details>
         <?php
     }
 
     public function update($new_instance, $old_instance) {
-        $instance = pages_options(array_merge(array('title' => '', 'root' => 0, 'auto_open' => false, 'excluded_pages' => array()), $new_instance));
-        return array_intersect_key($instance, array_flip(array('title', 'root', 'sort_by', 'order', 'auto_open', 'excluded_pages')));
+        $instance = pages_options(array_merge(array('title' => '', 'root' => 0, 'auto_open' => false, 'excluded_pages' => array(), 'show_controls' => false, 'close_siblings' => false), $new_instance));
+        return array_intersect_key($instance, array_flip(array('title', 'root', 'sort_by', 'order', 'auto_open', 'excluded_pages', 'show_controls', 'close_siblings')));
     }
 
     /** Render the shared searchable selector with page-specific labels. */

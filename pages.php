@@ -4,10 +4,11 @@ namespace ContentTrees;
 defined('ABSPATH') || exit;
 
 add_action('init', static function () {
+    wp_register_script('content-trees-pages', plugins_url('pages.js', __FILE__), array(), VERSION, true);
     register_block_type(__DIR__ . '/pages', array('render_callback' => __NAMESPACE__ . '\\render_pages_block'));
 });
 
-// Pages need the shared presentation only; Archive's script is loaded when an Archive is present.
+// Enqueue shared presentation before widget output follows wp_head.
 add_action('wp_enqueue_scripts', static function () {
     global $wp_query;
     $has_pages = is_active_widget(false, false, 'ctrees_pages', true);
@@ -27,7 +28,10 @@ add_action('wp_enqueue_scripts', static function () {
             }
         }
     }
-    if ($has_pages) { wp_enqueue_style('content-trees'); }
+    if ($has_pages) {
+        wp_enqueue_style('content-trees');
+        wp_enqueue_script('content-trees-pages');
+    }
 });
 
 function is_public_page($page) {
@@ -39,7 +43,7 @@ function is_public_page($page) {
 function pages_options($args = array()) {
     $defaults = array('title' => __('Pages', 'content-trees'), 'show_title' => true,
         'sort_by' => 'menu_order', 'order' => 'ASC', 'auto_open' => true, 'open_to' => 0, 'root' => 0,
-        'excluded_pages' => array());
+        'excluded_pages' => array(), 'show_controls' => false, 'close_siblings' => false);
     $args = array_intersect_key(wp_parse_args($args, $defaults), $defaults);
     $args['title'] = is_string($args['title']) ? sanitize_text_field($args['title']) : $defaults['title'];
     $args['show_title'] = enabled($args['show_title']) && $args['title'] !== '';
@@ -50,6 +54,8 @@ function pages_options($args = array()) {
     // A malformed saved root must not silently widen a scoped tree to all pages.
     $args['root'] = empty($args['root']) ? 0 : (exclusion_ids(array($args['root']))[0] ?? -1);
     $args['excluded_pages'] = exclusion_ids($args['excluded_pages']);
+    $args['show_controls'] = enabled($args['show_controls']);
+    $args['close_siblings'] = enabled($args['close_siblings']);
     return $args;
 }
 
@@ -201,10 +207,19 @@ function render_pages($args = array()) {
     }
 
     wp_enqueue_style('content-trees');
+    wp_enqueue_script('content-trees-pages');
+    $has_branches = count($hierarchy['pages']) > count($hierarchy['children'][0]);
+    $messages = array('expanded' => __('All page branches expanded.', 'content-trees'),
+        'collapsed' => __('All page branches collapsed.', 'content-trees'));
     ob_start();
     ?>
-    <nav class="ctrees ctrees-pages-tree" aria-label="<?php echo esc_attr($label); ?>">
+    <nav class="ctrees ctrees-pages-tree" aria-label="<?php echo esc_attr($label); ?>" data-close-siblings="<?php echo $args['close_siblings'] ? '1' : '0'; ?>" data-page-messages="<?php echo esc_attr(wp_json_encode($messages)); ?>">
         <?php if ($show_title) : ?><h2><?php echo esc_html($title); ?></h2><?php endif; ?>
+        <?php if ($args['show_controls'] && $has_branches) : ?>
+            <div class="ctrees-controls" role="group" aria-label="<?php esc_attr_e('Page controls', 'content-trees'); ?>" hidden>
+                <button type="button" data-ctrees-action="open"><?php esc_html_e('Open All', 'content-trees'); ?></button><span aria-hidden="true"> | </span><button type="button" data-ctrees-action="close"><?php esc_html_e('Close All', 'content-trees'); ?></button>
+            </div>
+        <?php endif; ?>
         <?php if (!$hierarchy['pages']) : ?><p><?php echo esc_html($args['root'] || $args['excluded_pages'] ? __('No pages match these settings.', 'content-trees') : __('No published pages yet.', 'content-trees')); ?></p>
         <?php else : ?><ul class="ctrees-pages"><?php
             // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- render_page_items() escapes labels, attributes and URLs at construction; remaining markup is constant.
@@ -222,7 +237,8 @@ function render_pages_block($attributes) {
     return render_pages(array('title' => $title, 'show_title' => $title !== '',
         'sort_by' => $attributes['sortBy'] ?? 'menu_order', 'order' => $attributes['order'] ?? 'ASC',
         'auto_open' => $attributes['autoOpen'] ?? true, 'root' => $attributes['root'] ?? 0,
-        'excluded_pages' => $attributes['exclude'] ?? array()));
+        'excluded_pages' => $attributes['exclude'] ?? array(),
+        'show_controls' => $attributes['showControls'] ?? false, 'close_siblings' => $attributes['closeSiblings'] ?? false));
 }
 
 function render_pages_shortcode($attributes) {

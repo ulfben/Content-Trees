@@ -15,9 +15,12 @@
         "exclude": { "type": "array", "items": { "type": "integer" }, "default": [] },
         "sortBy": { "type": "string", "enum": ["menu_order", "title"], "default": "menu_order" },
         "order": { "type": "string", "enum": ["ASC", "DESC"], "default": "ASC" },
-        "autoOpen": { "type": "boolean", "default": true }
+        "autoOpen": { "type": "boolean", "default": true },
+        "showControls": { "type": "boolean", "default": false },
+        "closeSiblings": { "type": "boolean", "default": false }
     },
     "supports": { "html": false, "customClassName": false },
     "editorScript": "file:./editor.js",
+    "viewScript": "content-trees-pages",
     "style": "content-trees"
 }

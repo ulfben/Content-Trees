@@ -78,12 +78,17 @@
                                 ? [{label: __('A–Z', 'content-trees'), value: 'ASC'}, {label: __('Z–A', 'content-trees'), value: 'DESC'}]
                                 : [{label: __('Ascending', 'content-trees'), value: 'ASC'}, {label: __('Descending', 'content-trees'), value: 'DESC'}],
                             onChange: order => setAttributes({order})}),
+                        el(ToggleControl, {label: __('Show Open All / Close All', 'content-trees'),
+                            checked: attributes.showControls, onChange: showControls => setAttributes({showControls})}),
                         el(ToggleControl, {label: __('Open the current branch automatically', 'content-trees'),
                             help: __('Open the parent branches when viewing a page in this tree.', 'content-trees'),
                             checked: attributes.autoOpen, onChange: autoOpen => setAttributes({autoOpen})})
                     )
                 ),
                 el(InspectorControls, {group: 'advanced'},
+                    el(ToggleControl, {label: __('Close other branches at the same level', 'content-trees'),
+                        help: __('Opening a branch closes its siblings and their child branches. Open All still opens everything.', 'content-trees'),
+                        checked: attributes.closeSiblings, onChange: closeSiblings => setAttributes({closeSiblings})}),
                     el(PageSelector, {label: __('Exclude pages', 'content-trees'),
                         help: __('Hide selected pages and all their child pages from this tree.', 'content-trees'),
                         multiple: true, value: attributes.exclude, onChange: exclude => setAttributes({exclude})})
