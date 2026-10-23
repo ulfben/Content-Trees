@@ -35,17 +35,32 @@ function is_public_page($page) {
         && $page->post_status === 'publish' && $page->post_password === '';
 }
 
+/** Keep block, widget and shortcode defaults and normalization together. */
+function pages_options($args = array()) {
+    $defaults = array('title' => __('Pages', 'content-trees'), 'show_title' => true,
+        'sort_by' => 'menu_order', 'order' => 'ASC', 'auto_open' => true, 'open_to' => 0);
+    $args = array_intersect_key(wp_parse_args($args, $defaults), $defaults);
+    $args['title'] = is_string($args['title']) ? sanitize_text_field($args['title']) : $defaults['title'];
+    $args['show_title'] = enabled($args['show_title']) && $args['title'] !== '';
+    $args['sort_by'] = $args['sort_by'] === 'title' ? 'title' : 'menu_order';
+    $args['order'] = $args['order'] === 'DESC' ? 'DESC' : 'ASC';
+    $args['auto_open'] = enabled($args['auto_open']);
+    $args['open_to'] = exclusion_ids(array($args['open_to']))[0] ?? 0;
+    return $args;
+}
+
 /**
  * Return the complete public page hierarchy, promoting eligible pages around
  * ineligible or missing ancestors without including those ancestors as nodes.
  */
-function pages_hierarchy() {
+function pages_hierarchy($args = array()) {
+    $args = pages_options($args);
     $query = new \WP_Query(array(
         'post_type' => 'page',
         'post_status' => array_keys(get_post_stati()),
         'posts_per_page' => -1,
         'no_found_rows' => true,
-        'orderby' => array('menu_order' => 'ASC', 'ID' => 'ASC'),
+        'orderby' => array($args['sort_by'] => $args['order'], 'ID' => 'ASC'),
         'update_post_meta_cache' => false,
         'update_post_term_cache' => false,
     ));
@@ -105,13 +120,8 @@ function pages_hierarchy() {
         if (!isset($children[$parent])) { $children[$parent] = array(); }
         $children[$parent][] = $id;
     }
-    foreach ($children as &$siblings) {
-        usort($siblings, static function ($left, $right) use ($pages) {
-            $order = (int) $pages[$left]->menu_order <=> (int) $pages[$right]->menu_order;
-            return $order !== 0 ? $order : ((int) $left <=> (int) $right);
-        });
-    }
-    unset($siblings);
+    // Query order is retained within each sibling list, including promoted
+    // nodes. WordPress/database collation supplies title order and ID breaks ties.
 
     return array('pages' => $pages, 'parents' => $parents, 'children' => $children);
 }
@@ -145,16 +155,17 @@ function render_page_items($parent, $hierarchy, $current_id, $open_ancestors) {
 }
 
 function render_pages($args = array()) {
-    $args = wp_parse_args($args, array('title' => __('Pages', 'content-trees'), 'show_title' => true));
-    $title = is_string($args['title']) ? sanitize_text_field($args['title']) : __('Pages', 'content-trees');
-    $show_title = enabled($args['show_title']) && $title !== '';
+    $args = pages_options($args);
+    $title = $args['title'];
+    $show_title = $args['show_title'];
     $label = $title !== '' ? $title : __('Pages', 'content-trees');
-    $hierarchy = pages_hierarchy();
+    $hierarchy = pages_hierarchy($args);
     $current_id = is_page() ? (int) get_queried_object_id() : 0;
     if (!isset($hierarchy['pages'][$current_id])) { $current_id = 0; }
 
     $open_ancestors = array();
-    $parent = $current_id ? $hierarchy['parents'][$current_id] : 0;
+    $target = isset($hierarchy['pages'][$args['open_to']]) ? $args['open_to'] : ($args['auto_open'] ? $current_id : 0);
+    $parent = $target ? $hierarchy['parents'][$target] : 0;
     while ($parent > 0 && !isset($open_ancestors[$parent])) {
         $open_ancestors[$parent] = true;
         $parent = $hierarchy['parents'][$parent] ?? 0;
@@ -179,13 +190,13 @@ function render_pages_block($attributes) {
     $title = isset($attributes['title']) && is_string($attributes['title'])
         ? sanitize_text_field($attributes['title'])
         : __('Pages', 'content-trees');
-    return render_pages(array('title' => $title, 'show_title' => $title !== ''));
+    return render_pages(array('title' => $title, 'show_title' => $title !== '',
+        'sort_by' => $attributes['sortBy'] ?? 'menu_order', 'order' => $attributes['order'] ?? 'ASC',
+        'auto_open' => $attributes['autoOpen'] ?? true));
 }
 
 function render_pages_shortcode($attributes) {
-    $attributes = shortcode_atts(array('title' => __('Pages', 'content-trees')), (array) $attributes, 'content_trees_pages');
-    $title = is_string($attributes['title']) ? sanitize_text_field($attributes['title']) : __('Pages', 'content-trees');
-    return render_pages(array('title' => $title, 'show_title' => $title !== ''));
+    return render_pages(shortcode_atts(pages_options(), (array) $attributes, 'content_trees_pages'));
 }
 
 add_shortcode('content_trees_pages', __NAMESPACE__ . '\\render_pages_shortcode');

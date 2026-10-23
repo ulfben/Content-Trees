@@ -10,7 +10,10 @@
     "keywords": ["pages", "tree", "navigation"],
     "textdomain": "content-trees",
     "attributes": {
-        "title": { "type": "string", "default": "Pages" }
+        "title": { "type": "string", "default": "Pages" },
+        "sortBy": { "type": "string", "enum": ["menu_order", "title"], "default": "menu_order" },
+        "order": { "type": "string", "enum": ["ASC", "DESC"], "default": "ASC" },
+        "autoOpen": { "type": "boolean", "default": true }
     },
     "supports": { "html": false, "customClassName": false },
     "editorScript": "file:./editor.js",

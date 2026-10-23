@@ -3,6 +3,18 @@
     'use strict';
     const initialized = new WeakSet();
     function initialize() {
+        document.querySelectorAll('.ctrees-page-sort').forEach(sort => {
+            if (initialized.has(sort)) return;
+            const order = (sort.closest('.widget-content') || sort.closest('form'))?.querySelector('.ctrees-page-order');
+            if (!order) return;
+            initialized.add(sort);
+            function labels() {
+                order.querySelector('[value="ASC"]').textContent = sort.value === 'title' ? order.dataset.titleAsc : order.dataset.asc;
+                order.querySelector('[value="DESC"]').textContent = sort.value === 'title' ? order.dataset.titleDesc : order.dataset.desc;
+            }
+            sort.addEventListener('change', labels);
+            labels();
+        });
         document.querySelectorAll('.ctrees-exclusions').forEach(root => {
             if (initialized.has(root)) return;
             initialized.add(root);
