@@ -130,8 +130,10 @@ function render_page_items($parent, $hierarchy, $current_id, $open_ancestors) {
         $link = '<a class="ctrees-page-link" href="' . esc_url(get_permalink($page)) . '"'
             . ($id === $current_id ? ' aria-current="page"' : '') . '>' . esc_html($label) . '</a>';
         if ($children) {
+            /* translators: %s: page title. */
+            $disclosure_label = sprintf(__('Expand or collapse %s', 'content-trees'), $label);
             $html .= '<li><details class="ctrees-page-branch"' . (isset($open_ancestors[$id]) ? ' open' : '') . '>'
-                . '<summary aria-label="' . esc_attr(sprintf(__('Expand or collapse %s', 'content-trees'), $label)) . '" aria-description="">'
+                . '<summary aria-label="' . esc_attr($disclosure_label) . '" aria-description="">'
                 . '<span class="ctrees-toggle" aria-hidden="true"></span>' . $link . '</summary>'
                 . '<ul class="ctrees-pages">' . render_page_items($id, $hierarchy, $current_id, $open_ancestors) . '</ul>'
                 . '</details></li>';
@@ -164,7 +166,10 @@ function render_pages($args = array()) {
     <nav class="ctrees ctrees-pages-tree" aria-label="<?php echo esc_attr($label); ?>">
         <?php if ($show_title) : ?><h2><?php echo esc_html($title); ?></h2><?php endif; ?>
         <?php if (!$hierarchy['pages']) : ?><p><?php esc_html_e('No published pages yet.', 'content-trees'); ?></p>
-        <?php else : ?><ul class="ctrees-pages"><?php echo render_page_items(0, $hierarchy, $current_id, $open_ancestors); ?></ul><?php endif; ?>
+        <?php else : ?><ul class="ctrees-pages"><?php
+            // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- render_page_items() escapes labels, attributes and URLs at construction; remaining markup is constant.
+            echo render_page_items(0, $hierarchy, $current_id, $open_ancestors);
+        ?></ul><?php endif; ?>
     </nav>
     <?php
     return trim(preg_replace('/>\s+</', '><', ob_get_clean()));
