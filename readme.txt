@@ -4,38 +4,34 @@ Tags: archives, pages, navigation, widget, block
 Requires at least: 6.3
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 0.9.3
+Stable tag: 0.9.4
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-Collapsible archive and page trees with live editor previews and keyboard-friendly navigation.
+Collapsible navigation for your archives, pages, categories and tags.
 
 == Description ==
 
 Content Trees makes your site's content easier to explore through compact, collapsible navigation.
 
-Content Trees is the modern successor to WP-dTree, rebuilt using native browser features and WordPress APIs. It replaces the aging dTree library with lightweight JavaScript, loads post titles on demand, and offers a live preview in the block editor. Built with accessibility in mind, it supports keyboard navigation, touch-friendly controls, and screen-reader announcements.
+Content Trees is the modern successor to WP-dTree, rebuilt using native browser features and WordPress APIs. It replaces the aging dTree library with lightweight JavaScript, loads archive post titles on demand, and offers a live preview in the block editor. Built with accessibility in mind, it supports keyboard navigation, touch-friendly controls, and screen-reader announcements.
 
-Version 0.8 adds page trees alongside archive trees. Category and tag trees are planned for 1.0.
+Version 0.9 includes all four basic tree types: archives, pages, categories and tags.
 
 = Available now =
 
 * **Archive trees:** Browse posts by year and month, or display a simple list of months.
 * **Page trees:** Follow page hierarchies, choose a starting page, exclude branches, and sort by title, menu order, publication date or last update.
+* **Category trees:** Follow category hierarchies, choose a starting category, and exclude categories together with their children.
+* **Tag trees:** Browse a flat list of tags and the posts assigned to each tag.
+* **Taxonomy display:** Show or hide posts, post counts and empty terms. Sort categories and tags by name or post count, and posts by title, publication date or last update.
 * **On-demand loading:** Posts are loaded only when a month is expanded, with no pagination or arbitrary limits. Previously loaded titles are cached for faster navigation.
 * **Archive display:** Show or hide posts and post counts, choose newest or oldest first, and optionally link years and months to their archives.
-* **Current-item navigation:** Highlight the current post or page and optionally expand its branch automatically.
+* **Current-item navigation:** Highlight the current post, page, category or tag and optionally expand its matching branches automatically.
 * **Branch controls:** Optional Open All / Close All, with the ability to automatically close sibling branches.
 * **Post exclusions:** Search for and exclude individual posts from both the tree and its post counts.
 * **WordPress integration:** Blocks with live previews, classic widgets, and shortcode support.
 * **Accessible navigation:** Native disclosure controls, keyboard navigation, touch-friendly controls, and screen-reader announcements.
-
-= Coming next =
-
-* **Category trees:** Browse categories and the posts within them.
-* **Tag trees:** Browse posts organized by tag.
-
-These remaining tree types are planned for version 1.0, which is intended to become the recommended upgrade path for most WP-dTree users.
 
 Future possibilities include support for custom taxonomies, custom post types, and category-filtered archives, depending on user demand.
 
@@ -43,18 +39,22 @@ Future possibilities include support for custom taxonomies, custom post types, a
 
 1. Upload the supplied plugin folder to `wp-content/plugins/`, or install a supplied ZIP through Plugins > Add New > Upload Plugin.
 2. Activate Content Trees.
-3. Add the Content Trees: Archive or Content Trees: Pages block in Appearance > Widgets. With a block theme, add it to a template or template part in Appearance > Editor.
+3. Add a Content Trees block (Archive, Pages, Categories or Tags) in Appearance > Widgets. With a block theme, add it to a template or template part in Appearance > Editor.
 4. Choose a title and display options, then save. Classic widget areas can use the matching widget instead.
 
 == Frequently Asked Questions ==
 
 = Can I use this alongside WP-dTree? =
 
-Yes. Content Trees installs separately and leaves WP-dTree's widgets and settings intact. Add a new archive or page tree to try it; existing widgets are not converted automatically.
+Yes. Content Trees installs separately and leaves WP-dTree's widgets and settings intact. Add a new tree to try it; existing widgets are not converted automatically.
 
 = Can I add a tree with a shortcode? =
 
-Yes. Use `[content_trees_archive title="Archives"]` or `[content_trees_pages title="Pages"]`. The blocks and classic widgets offer the easiest way to configure trees.
+Yes. Use `[content_trees_archive]`, `[content_trees_pages]`, `[content_trees_categories]` or `[content_trees_tags]`. The blocks and classic widgets offer the easiest way to configure trees.
+
+= How do category and tag counts work? =
+
+Category counts include unique public posts in that category and its visible child categories. Tag counts include posts assigned directly to that tag. A post can appear under more than one assigned term, but is counted only once in a category total. Exclusions affect this tree and its counts; linked archive pages keep their ordinary contents.
 
 = Which features are not included? =
 
@@ -66,6 +66,12 @@ Page counts, a root that follows the current page, and remembering expanded bran
 2. An archive tree on a sample blog, expanded to the current post with its title highlighted.
 
 == Changelog ==
+
+= 0.9.4 =
+
+* Add Category and Tag trees with blocks, classic widgets and shortcodes.
+* Choose a category root, exclude terms or posts, and configure ordering, counts, empty terms and branch controls.
+* Skip post-title and permalink preparation when individual posts are hidden.
 
 = 0.8.1 =
 
