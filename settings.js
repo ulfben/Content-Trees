@@ -3,6 +3,26 @@
     'use strict';
     const initialized = new WeakSet();
     function initialize() {
+        document.querySelectorAll('.ctrees-taxonomy-settings').forEach(root => {
+            if (initialized.has(root)) return;
+            initialized.add(root);
+            const showPosts = root.querySelector('.ctrees-taxonomy-show-posts');
+            const postOptions = root.querySelector('.ctrees-taxonomy-post-options');
+            const visibility = () => { postOptions.hidden = !showPosts.checked; };
+            showPosts.addEventListener('change', visibility);
+            visibility();
+            root.querySelectorAll('.ctrees-taxonomy-ordering').forEach(group => {
+                const sort = group.querySelector('.ctrees-taxonomy-sort');
+                const order = group.querySelector('.ctrees-taxonomy-order');
+                const labels = JSON.parse(group.dataset.orderLabels);
+                function updateLabels() {
+                    order.querySelector('[value="ASC"]').textContent = labels[sort.value][0];
+                    order.querySelector('[value="DESC"]').textContent = labels[sort.value][1];
+                }
+                sort.addEventListener('change', updateLabels);
+                updateLabels();
+            });
+        });
         document.querySelectorAll('.ctrees-page-sort').forEach(sort => {
             if (initialized.has(sort)) return;
             const order = (sort.closest('.widget-content') || sort.closest('form'))?.querySelector('.ctrees-page-order');

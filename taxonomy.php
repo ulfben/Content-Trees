@@ -24,8 +24,57 @@ function taxonomy_options($taxonomy, $args = array()) {
     foreach (array('excluded_terms', 'excluded_posts') as $field) { $args[$field] = exclusion_ids($args[$field]); }
     $args['sort_by'] = in_array($args['sort_by'], array('name', 'count'), true) ? $args['sort_by'] : 'name';
     $args['post_sort_by'] = in_array($args['post_sort_by'], array('title', 'date', 'modified'), true) ? $args['post_sort_by'] : 'date';
-    foreach (array('order', 'post_order') as $field) { $args[$field] = $args[$field] === 'DESC' ? 'DESC' : 'ASC'; }
+    foreach (array('order', 'post_order') as $field) { $args[$field] = in_array($args[$field], array('ASC', 'DESC'), true) ? $args[$field] : $defaults[$field]; }
     return $args;
+}
+
+/** Resolve public term choices, including empty terms, without content counts. */
+function taxonomy_option_nodes($taxonomy, $include = array(), $search = '') {
+    if (!in_array($taxonomy, array('category', 'post_tag'), true)) { return array(); }
+    $ids = exclusion_ids($include);
+    if ($include && !$ids) { return array(); }
+    $args = array('taxonomy' => $taxonomy, 'hide_empty' => false, 'hierarchical' => false,
+        'number' => $include ? 0 : 20, 'orderby' => 'name', 'order' => 'ASC',
+        'ctrees_name_order' => 'ASC', 'update_term_meta_cache' => false);
+    if ($ids) { $args['include'] = $ids; } else { $args['search'] = $search; }
+    $terms = get_terms($args);
+    if (is_wp_error($terms)) { return array(); }
+    $items = array();
+    foreach ($terms as $term) {
+        if (!$term instanceof \WP_Term || $term->taxonomy !== $taxonomy) { continue; }
+        $url = get_term_link($term, $taxonomy);
+        if (is_wp_error($url)) { continue; }
+        $label = html_entity_decode(wp_strip_all_tags($term->name, true), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $items[] = array('id' => (int) $term->term_id, 'label' => $label !== '' ? $label : __('(Untitled)', 'content-trees'), 'url' => esc_url_raw($url));
+    }
+    return $items;
+}
+
+add_action('rest_api_init', static function () {
+    foreach (array('category-options' => 'category', 'tag-options' => 'post_tag') as $route => $taxonomy) {
+        register_rest_route('content-trees/v1', '/' . $route, array(
+            'methods' => 'GET',
+            'permission_callback' => static function () { return current_user_can('edit_posts') || current_user_can('edit_theme_options'); },
+            'args' => array('search' => array('type' => 'string', 'maxLength' => 200, 'default' => ''),
+                'include' => array('type' => 'string', 'pattern' => '^[0-9,]*$', 'default' => '')),
+            'callback' => static function ($request) use ($taxonomy) {
+                $ids = exclusion_ids($request['include']);
+                if ($request['include'] !== '' && !$ids) { return rest_ensure_response(array('items' => array())); }
+                return rest_ensure_response(array('items' => taxonomy_option_nodes($taxonomy, $ids, $request['search'])));
+            },
+        ));
+    }
+});
+
+/** Keep the block adapter explicit; saved first-slice attributes retain defaults. */
+function taxonomy_block_options($taxonomy, $attributes) {
+    $map = array('title' => 'title', 'root' => 'root', 'showPosts' => 'show_posts', 'sortBy' => 'sort_by', 'order' => 'order',
+        'postSortBy' => 'post_sort_by', 'postOrder' => 'post_order', 'showCounts' => 'show_counts', 'hideEmpty' => 'hide_empty',
+        'autoOpen' => 'auto_open', 'showControls' => 'show_controls', 'closeSiblings' => 'close_siblings',
+        'exclude' => 'excluded_terms', 'excludePosts' => 'excluded_posts');
+    $args = array();
+    foreach ($map as $attribute => $option) { if (array_key_exists($attribute, $attributes)) { $args[$option] = $attributes[$attribute]; } }
+    return taxonomy_options($taxonomy, $args);
 }
 
 // Preserve database name collation, with a stable ID tie for these queries only.
@@ -255,8 +304,7 @@ function render_taxonomy($taxonomy, $args = array()) {
 function register_taxonomy_tree($taxonomy, $name, $widget) {
     add_action('init', static function () use ($taxonomy, $name) {
         register_block_type(__DIR__ . '/' . $name, array('render_callback' => static function ($attributes) use ($taxonomy) {
-            return render_taxonomy($taxonomy, array('title' => $attributes['title'] ?? taxonomy_title($taxonomy),
-                'show_posts' => $attributes['showPosts'] ?? true));
+            return render_taxonomy($taxonomy, taxonomy_block_options($taxonomy, $attributes));
         }));
     });
     add_shortcode('content_trees_' . $name, static function ($attributes) use ($taxonomy, $name) {
@@ -272,7 +320,7 @@ function register_taxonomy_tree($taxonomy, $name, $widget) {
 add_action('init', static function () {
     wp_register_script('content-trees-taxonomy', plugins_url('taxonomy.js', __FILE__), array(), VERSION, true);
     wp_register_script('content-trees-taxonomy-editor', plugins_url('taxonomy-editor.js', __FILE__),
-        array('wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-server-side-render'), VERSION, true);
+        array('wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-server-side-render', 'wp-api-fetch'), VERSION, true);
 });
 
 register_taxonomy_tree('category', 'categories', __NAMESPACE__ . '\\Categories_Widget');
