@@ -10,17 +10,17 @@
 .ctrees .ctrees-month { margin-inline-start: var(--ctrees-indent); }
 .ctrees .ctrees-count { font-size: .85em; font-weight: normal; margin-inline-start: .3em; }
 .ctrees .ctrees-archive { display: inline-flex; align-items: center; min-block-size: 24px; color: inherit; }
-.ctrees .ctrees-page-link { display: inline-flex; align-items: center; min-block-size: 24px; max-inline-size: 100%; color: inherit; overflow-wrap: anywhere; }
+.ctrees .ctrees-page-link, .ctrees .ctrees-term-link { display: inline-flex; align-items: center; min-block-size: 24px; max-inline-size: 100%; color: inherit; overflow-wrap: anywhere; }
 @media (pointer: coarse) {
     .ctrees .ctrees-toggle { flex-basis: 44px; block-size: 44px; }
     .ctrees .ctrees-archive { min-inline-size: 44px; min-block-size: 44px; }
-    .ctrees .ctrees-page-link { min-inline-size: 44px; min-block-size: 44px; }
+    .ctrees .ctrees-page-link, .ctrees .ctrees-term-link { min-inline-size: 44px; min-block-size: 44px; }
 }
 .ctrees .ctrees-posts { list-style: none; padding: 0; margin-block: .5rem; margin-inline: var(--ctrees-indent) 0; }
 .ctrees .ctrees-posts li { border: 0; padding: 0; margin-block: .35rem; overflow-wrap: anywhere; }
-.ctrees .ctrees-pages { list-style: none; padding: 0; margin-block: 0; margin-inline: var(--ctrees-indent) 0; }
-.ctrees > .ctrees-pages { margin-inline-start: 0; }
-.ctrees .ctrees-pages li { border: 0; padding: 0; margin-block: .25rem; }
+.ctrees .ctrees-pages, .ctrees .ctrees-terms { list-style: none; padding: 0; margin-block: 0; margin-inline: var(--ctrees-indent) 0; }
+.ctrees > .ctrees-pages, .ctrees > .ctrees-terms { margin-inline-start: 0; }
+.ctrees .ctrees-pages li, .ctrees .ctrees-terms li { border: 0; padding: 0; margin-block: .25rem; }
 .ctrees .ctrees-page-branch { margin-block: .25rem; }
 .ctrees a[aria-current="page"] { font-weight: bold; text-decoration: underline; text-decoration-thickness: .12em; }
 .ctrees :focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }

@@ -1,0 +1,19 @@
+{
+    "$schema": "https://schemas.wp.org/trunk/block.json",
+    "apiVersion": 3,
+    "name": "content-trees/tags",
+    "version": "1.0.0-alpha.1",
+    "title": "Content Trees: Tags",
+    "category": "widgets",
+    "icon": "tag",
+    "description": "A compact list of tags and their published posts.",
+    "keywords": ["tags", "tree", "navigation"],
+    "textdomain": "content-trees",
+    "attributes": {
+        "title": { "type": "string", "default": "Tags" },
+        "showPosts": { "type": "boolean", "default": true }
+    },
+    "supports": { "html": false, "customClassName": false },
+    "editorScript": "content-trees-taxonomy-editor",
+    "style": "content-trees"
+}
