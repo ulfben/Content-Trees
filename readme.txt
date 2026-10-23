@@ -4,7 +4,7 @@ Tags: archives, pages, navigation, widget, block
 Requires at least: 6.3
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 0.9.4
+Stable tag: 0.9.5
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -56,16 +56,16 @@ Yes. Use `[content_trees_archive]`, `[content_trees_pages]`, `[content_trees_cat
 
 Category counts include unique public posts in that category and its visible child categories. Tag counts include posts assigned directly to that tag. A post can appear under more than one assigned term, but is counted only once in a category total. Exclusions affect this tree and its counts; linked archive pages keep their ordinary contents.
 
-= Which features are not included? =
-
-Page counts, a root that follows the current page, and remembering expanded branches are not available. Legacy icons/connector lines, title truncation, author/custom-field filters and page allowlists are not carried over.
-
 == Screenshots ==
 
 1. Configure the archive tree in the Widgets editor, with a live preview and controls for grouping, ordering, counts and branch behaviour.
 2. An archive tree on a sample blog, expanded to the current post with its title highlighted.
 
 == Changelog ==
+
+= 0.9.5 =
+
+* Translate default Category and Tag block headings while preserving custom and intentionally blank titles.
 
 = 0.9.4 =
 
