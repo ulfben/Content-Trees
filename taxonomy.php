@@ -140,14 +140,160 @@ function taxonomy_parents($taxonomy, $terms, $original = null, $root = 0) {
     return $parents;
 }
 
-/** Complete direct memberships; post presentation is optional and prepared last. */
+/**
+ * Fetch complete public posts, or only their IDs when building the outline.
+ *
+ * @param string $taxonomy Built-in taxonomy name.
+ * @param int[]  $terms Eligible term IDs.
+ * @param array  $args Normalized tree options.
+ * @param bool   $ids_only Whether to return IDs without post objects.
+ * @return \WP_Query
+ */
+function taxonomy_post_query( $taxonomy, $terms, $args, $ids_only = false ) {
+	$query = array(
+		'post_type'              => 'post',
+		'post_status'            => 'publish',
+		'has_password'           => false,
+		'posts_per_page'         => -1,
+		'no_found_rows'          => true,
+		'ignore_sticky_posts'    => true,
+		'orderby'                => $ids_only ? array( 'ID' => 'ASC' ) : array(
+			$args['post_sort_by'] => $args['post_order'],
+			'ID'                  => 'ASC',
+		),
+		'update_post_meta_cache' => false,
+		'update_post_term_cache' => ! $ids_only,
+		'tax_query'              => array(
+			array(
+				'taxonomy'         => $taxonomy,
+				'terms'            => $terms,
+				'field'            => 'term_id',
+				'include_children' => false,
+			),
+		),
+	);
+	if ( $ids_only ) {
+		$query['fields'] = 'ids'; }
+	return new \WP_Query( $query );
+}
+
+/**
+ * Read ID pairs after resolving term visibility through core APIs.
+ *
+ * @param string $taxonomy Built-in taxonomy name.
+ * @param int[]  $terms Eligible term IDs.
+ * @param int[]  $posts Eligible post IDs.
+ * @return object[] Public post and term ID pairs.
+ */
+function taxonomy_membership_rows( $taxonomy, $terms, $posts ) {
+	global $wpdb;
+	if ( ! $terms || ! $posts ) {
+		return array(); }
+	$term_placeholders = implode( ',', array_fill( 0, count( $terms ), '%d' ) );
+	$post_placeholders = implode( ',', array_fill( 0, count( $posts ), '%d' ) );
+	// Both interpolated strings contain only generated integer placeholders.
+	// Recheck public eligibility independently of any post-query filters.
+    // phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- Generated %d lists contain no input values; the prepare argument array has four fixed values plus one integer per generated placeholder.
+    // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Prepared request-local ID pairs; no post/term objects or persistent membership snapshot.
+	return $wpdb->get_results(
+		$wpdb->prepare(
+			"SELECT tr.object_id, tt.term_id FROM %i AS tr
+        INNER JOIN %i AS tt ON tt.term_taxonomy_id = tr.term_taxonomy_id
+        INNER JOIN %i AS p ON p.ID = tr.object_id
+        WHERE tt.taxonomy = %s AND tt.term_id IN ($term_placeholders) AND tr.object_id IN ($post_placeholders)
+        AND p.post_type = 'post' AND p.post_status = 'publish' AND p.post_password = ''",
+			array_merge( array( $wpdb->term_relationships, $wpdb->term_taxonomy, $wpdb->posts, $taxonomy ), array_values( $terms ), array_values( $posts ) )
+		)
+	);
+    // phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber
+}
+
+/**
+ * Fetch a complete direct post list for the public route.
+ *
+ * @param string $taxonomy Built-in taxonomy name.
+ * @param int    $term_id Requested term ID.
+ * @param array  $args Tree options controlling post sorting and exclusions.
+ * @return array|\WP_Error Public link nodes or an unavailable-term error.
+ */
+function taxonomy_term_posts( $taxonomy, $term_id, $args = array() ) {
+	if ( ! in_array( $taxonomy, array( 'category', 'post_tag' ), true ) ) {
+		return new \WP_Error( 'ctrees_invalid_taxonomy', __( 'Unknown tree type.', 'content-trees' ), array( 'status' => 404 ) ); }
+	$term = get_term( $term_id, $taxonomy );
+	if ( ! $term instanceof \WP_Term || $term->taxonomy !== $taxonomy ) {
+		return new \WP_Error( 'ctrees_term_not_found', __( 'This category or tag is no longer available.', 'content-trees' ), array( 'status' => 404 ) ); }
+	$args     = taxonomy_options( $taxonomy, $args );
+	$query    = taxonomy_post_query( $taxonomy, array( (int) $term_id ), $args );
+	$excluded = array_fill_keys( $args['excluded_posts'], true );
+	$items    = array();
+	foreach ( $query->posts as $post ) {
+		if ( is_public_post( $post ) && ! isset( $excluded[ $post->ID ] ) ) {
+			$items[] = post_node( $post ); }
+	}
+	return array( 'items' => $items );
+}
+
+add_action(
+	'rest_api_init',
+	static function () {
+		register_rest_route(
+			'content-trees/v1',
+			'/terms/(?P<taxonomy>category|post_tag)/(?P<term_id>\d+)/posts',
+			array(
+				'methods'             => 'GET',
+				'permission_callback' => '__return_true',
+				'args'                => array(
+					'taxonomy'       => array(
+						'type'     => 'string',
+						'enum'     => array( 'category', 'post_tag' ),
+						'required' => true,
+					),
+					'term_id'        => array(
+						'type'     => 'integer',
+						'minimum'  => 1,
+						'required' => true,
+					),
+					'sort_by'        => array(
+						'type'    => 'string',
+						'enum'    => array( 'title', 'date', 'modified' ),
+						'default' => 'date',
+					),
+					'order'          => array(
+						'type'    => 'string',
+						'enum'    => array( 'ASC', 'DESC' ),
+						'default' => 'DESC',
+					),
+					'excluded_posts' => array(
+						'type'    => 'string',
+						'pattern' => '^[0-9,]*$',
+						'default' => '',
+					),
+				),
+				'callback'            => static function ( $request ) {
+					return rest_ensure_response(
+						taxonomy_term_posts(
+							$request['taxonomy'],
+							(int) $request['term_id'],
+							array(
+								'post_sort_by'   => $request['sort_by'],
+								'post_order'     => $request['order'],
+								'excluded_posts' => exclusion_ids( $request['excluded_posts'] ),
+							)
+						)
+					);
+				},
+			)
+		);
+	}
+);
+
+/** Complete term structure and lightweight memberships; no post presentation. */
 function taxonomy_data($taxonomy, $args = array()) {
     $data = array('terms' => array(), 'parents' => array(), 'children' => array(0 => array()),
         'memberships' => array(), 'counts' => array(), 'posts' => array());
     if (!in_array($taxonomy, array('category', 'post_tag'), true)) { return $data; }
     // Retain the first slice's internal boolean convenience for existing checks.
     $args = taxonomy_options($taxonomy, is_bool($args) ? array('show_posts' => $args) : $args);
-    $show_posts = $args['show_posts'];
     $results = get_terms(array('taxonomy' => $taxonomy, 'hide_empty' => false, 'hierarchical' => false,
         'number' => 0, 'orderby' => 'name', 'order' => 'ASC', 'ctrees_name_order' => $args['sort_by'] === 'name' ? $args['order'] : 'ASC', 'update_term_meta_cache' => false));
     if (is_wp_error($results)) { return $data; }
@@ -171,44 +317,27 @@ function taxonomy_data($taxonomy, $args = array()) {
     }
     if (!$data['terms']) { return $data; }
     $data['parents'] = taxonomy_parents($taxonomy, $data['terms'], $original, $args['root']);
-    $query = new \WP_Query(array('post_type' => 'post', 'post_status' => 'publish', 'has_password' => false,
-        'posts_per_page' => -1, 'no_found_rows' => true, 'ignore_sticky_posts' => true,
-        'orderby' => $show_posts ? array($args['post_sort_by'] => $args['post_order'], 'ID' => 'ASC') : array('ID' => 'ASC'), 'update_post_meta_cache' => false,
-        'update_post_term_cache' => $show_posts,
-        'tax_query' => array(array('taxonomy' => $taxonomy, 'terms' => array_keys($data['terms']),
-            'field' => 'term_id', 'include_children' => false))));
-    $posts = array();
-    $excluded_posts = array_fill_keys($args['excluded_posts'], true);
-    foreach ($query->posts as $post) {
-        if (is_public_post($post) && !isset($excluded_posts[$post->ID])) { $posts[(int) $post->ID] = $post; }
+    $needs_memberships = $args['show_posts'] || $args['show_counts'] || $args['hide_empty'] || $args['sort_by'] === 'count';
+    $post_ids = array();
+    if ($needs_memberships) {
+        $query = taxonomy_post_query($taxonomy, array_keys($data['terms']), $args, true);
+        $post_ids = array_values(array_diff(exclusion_ids($query->posts), $args['excluded_posts']));
+    } elseif ($args['auto_open'] && is_singular('post') && is_public_post(get_queried_object())) {
+        $current = (int) get_queried_object_id();
+        if (!in_array($current, $args['excluded_posts'], true)) { $post_ids = array($current); }
     }
-    $direct = array();
-    if ($posts) {
-        $memberships = wp_get_object_terms(array_keys($posts), $taxonomy,
-            array('fields' => 'all_with_object_id', 'orderby' => 'none', 'update_term_meta_cache' => false));
-        if (!is_wp_error($memberships)) {
-            foreach ($memberships as $term) {
-                $post_id = (int) $term->object_id;
-                $term_id = (int) $term->term_id;
-                if ($term->taxonomy === $taxonomy && isset($posts[$post_id], $data['terms'][$term_id])) {
-                    $direct[$post_id][$term_id] = true;
-                }
-            }
-        }
+    foreach (taxonomy_membership_rows($taxonomy, array_keys($data['terms']), $post_ids) as $row) {
+        $data['memberships'][(int) $row->term_id][(int) $row->object_id] = true;
     }
     $unique = array();
-    // Query order supplies publication-date ordering within each direct post list.
-    foreach ($posts as $id => $post) {
-        foreach ($direct[$id] ?? array() as $term_id => $unused) {
-            $data['memberships'][$term_id][$id] = true;
+    foreach ($data['memberships'] as $term_id => $posts) {
+        foreach ($posts as $id => $unused) {
             $parent = $term_id;
             while ($parent) {
                 $unique[$parent][$id] = true;
                 $parent = $data['parents'][$parent];
             }
         }
-        // Counts and visibility need memberships, never post titles or permalinks.
-        if ($show_posts && isset($direct[$id])) { $data['posts'][$id] = post_node($post); }
     }
     foreach ($data['terms'] as $id => $term) {
         if ($args['hide_empty'] && empty($unique[$id])) { unset($data['terms'][$id], $data['parents'][$id]); continue; }
@@ -237,15 +366,17 @@ function render_taxonomy_items($parent, $data, $current_term, $current_post, $op
         if ($args['show_counts']) { $link .= '<span class="ctrees-count">(' . esc_html(number_format_i18n($data['counts'][$id])) . ')</span>'; }
         $children = render_taxonomy_items($id, $data, $current_term, $current_post, $open, $args);
         $post_list = '';
-        if ($args['show_posts']) {
-            foreach ($data['memberships'][$id] ?? array() as $post_id => $unused) {
-                $post_list .= post_link($data['posts'][$post_id], $current_post);
+        $has_posts = $args['show_posts'] && !empty($data['memberships'][$id]);
+        if ($has_posts && isset($open[$id])) {
+            foreach ($data['post_lists'][$id] ?? array() as $post_id) {
+                if (isset($data['posts'][$post_id])) { $post_list .= post_link($data['posts'][$post_id], $current_post); }
             }
         }
-        if ($children || $post_list) {
+        if ($children || $has_posts) {
             /* translators: %s: category or tag name. */
             $label = sprintf(__('Expand or collapse %s', 'content-trees'), $term['label']);
             $html .= '<li><details class="ctrees-term-branch" data-term-id="' . esc_attr($id) . '"'
+                . ' data-has-posts="' . ($has_posts ? '1' : '0') . '"' . ($has_posts && isset($open[$id]) ? ' data-loaded="1"' : '')
                 . (isset($open[$id]) ? ' open' : '') . '><summary aria-label="' . esc_attr($label)
                 . '" aria-description=""><span class="ctrees-toggle" aria-hidden="true"></span>' . $link . '</summary>'
                 . ($children ? '<ul class="ctrees-terms">' . $children . '</ul>' : '')
@@ -271,13 +402,37 @@ function render_taxonomy($taxonomy, $args = array()) {
         if ($explicit ? $id !== $explicit : (!$args['auto_open'] || ($id !== $current_term && !isset($data['memberships'][$id][$current_post])))) { continue; }
         while ($id && !isset($open[$id])) { $open[$id] = true; $id = $data['parents'][$id]; }
     }
+    // Prepare only initially open direct lists, using one union query for all paths.
+    $wanted = $open_terms = array();
+    if ($args['show_posts']) {
+        foreach ($open as $id => $unused) {
+            if (empty($data['memberships'][$id])) { continue; }
+            $open_terms[] = $id;
+            foreach ($data['memberships'][$id] as $post_id => $unused_post) { $wanted[$post_id][] = $id; }
+        }
+    }
+    if ($open_terms) {
+        $query = taxonomy_post_query($taxonomy, $open_terms, $args);
+        foreach ($query->posts as $post) {
+            if (!is_public_post($post) || !isset($wanted[$post->ID])) { continue; }
+            $data['posts'][$post->ID] = post_node($post);
+            foreach ($wanted[$post->ID] as $term_id) { $data['post_lists'][$term_id][] = $post->ID; }
+        }
+    }
     wp_enqueue_style('content-trees');
     wp_enqueue_script('content-trees-taxonomy');
     $label = $args['title'] !== '' ? $args['title'] : taxonomy_title($taxonomy);
     $messages = $taxonomy === 'category'
         ? array('expanded' => __('All category branches expanded.', 'content-trees'), 'collapsed' => __('All category branches collapsed.', 'content-trees'))
         : array('expanded' => __('All tag branches expanded.', 'content-trees'), 'collapsed' => __('All tag branches collapsed.', 'content-trees'));
+    $messages += array('loading' => __('Loading posts…', 'content-trees'), 'loaded' => __('Posts loaded.', 'content-trees'),
+        'empty' => __('No posts in this term.', 'content-trees'), 'error' => __('Posts could not be loaded. Try again or visit the term archive.', 'content-trees'),
+        'retry' => __('Try again', 'content-trees'), 'bulkLoading' => __('Loading tree posts…', 'content-trees'),
+        'bulkComplete' => __('Tree loading finished.', 'content-trees'), 'bulkError' => __('Tree loading finished. Some branches could not be loaded. Use Try again in those branches.', 'content-trees'));
     $html = '<nav class="ctrees ctrees-taxonomy-tree" data-taxonomy="' . esc_attr($taxonomy) . '" aria-label="' . esc_attr($label)
+        . '" data-taxonomy-endpoint="' . esc_url(rest_url('content-trees/v1/terms/' . $taxonomy))
+        . '" data-current-id="' . esc_attr($current_post) . '" data-post-sort="' . esc_attr($args['post_sort_by'])
+        . '" data-post-order="' . esc_attr($args['post_order']) . '" data-exclude="' . esc_attr(implode(',', $args['excluded_posts']))
         . '" data-close-siblings="' . ($args['close_siblings'] ? '1' : '0') . '" data-taxonomy-messages="' . esc_attr(wp_json_encode($messages)) . '">';
     if ($args['show_title']) { $html .= '<h2>' . esc_html($args['title']) . '</h2>'; }
     $has_branches = false;
@@ -318,7 +473,7 @@ function register_taxonomy_tree($taxonomy, $name, $widget) {
 }
 
 add_action('init', static function () {
-    wp_register_script('content-trees-taxonomy', plugins_url('taxonomy.js', __FILE__), array(), VERSION, true);
+    wp_register_script('content-trees-taxonomy', plugins_url('taxonomy.js', __FILE__), array('content-trees-post-loader'), VERSION, true);
     wp_register_script('content-trees-taxonomy-editor', plugins_url('taxonomy-editor.js', __FILE__),
         array('wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-server-side-render', 'content-trees-editor-selector'), VERSION, true);
 	wp_set_script_translations( 'content-trees-taxonomy-editor', 'content-trees' );

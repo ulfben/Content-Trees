@@ -1,16 +1,7 @@
 /* Native disclosures work without this enhancement; archive links remain available. */
 (() => {
     'use strict';
-    // Opening a large tree must not send hundreds of simultaneous requests.
-    const queue = [];
-    let active = 0;
-    function drain() {
-        while (active < 3 && queue.length) {
-            const task = queue.shift();
-            active++;
-            task().finally(() => { active--; drain(); });
-        }
-    }
+    const posts = window.ContentTreesPosts;
     // Pages use the shared .ctrees styling but no archive endpoint/messages.
     // Keep this initializer scoped to archive markup, including cached 0.7 HTML.
     document.querySelectorAll('.ctrees[data-endpoint][data-messages]').forEach(tree => {
@@ -82,7 +73,7 @@
             function load() {
                 if (pending || month.dataset.loaded === '1') return;
                 pending = true;
-                queue.push(async () => {
+                posts.enqueue(async () => {
                     // Close All cancels work that has not started, keeping loaded titles.
                     if (!isVisible(month)) { pending = false; finish(month, false, ''); return; }
                     const focusAfterLoad = document.activeElement === retry;
@@ -95,53 +86,24 @@
                     let failed = false;
                     let completion = messages.loaded;
                     try {
-                        const endpoint = new URL(tree.dataset.endpoint, document.baseURI);
                         const [year, monthNumber] = month.dataset.month.split('-');
-                        const branchPath = `/${year}/${Number(monthNumber)}`;
-                        // Support both plain ?rest_route= URLs and pretty REST permalinks.
-                        if (endpoint.searchParams.has('rest_route')) {
-                            endpoint.searchParams.set('rest_route', endpoint.searchParams.get('rest_route').replace(/\/$/, '') + branchPath);
-                        } else {
-                            endpoint.pathname = endpoint.pathname.replace(/\/$/, '') + branchPath;
-                        }
-                        if (tree.dataset.order === 'ASC') endpoint.searchParams.set('order', 'ASC');
-                        if (tree.dataset.exclude) endpoint.searchParams.set('excluded_posts', tree.dataset.exclude);
+                        const endpoint = posts.endpoint(tree.dataset.endpoint, `/${year}/${Number(monthNumber)}`, {
+                            order: tree.dataset.order === 'ASC' ? 'ASC' : null,
+                            excluded_posts: tree.dataset.exclude
+                        });
                         const response = await fetch(endpoint, {signal: controller.signal, credentials: 'omit'});
                         if (!response.ok) throw new Error('Request failed');
                         const result = await response.json();
-                        if (!result || !Array.isArray(result.items)) {
-                            throw new Error('Invalid response');
-                        }
-                        // Validate the complete month before changing the branch.
-                        const items = result.items.map(item => {
-                            if (!Number.isInteger(item.id) || typeof item.label !== 'string' || typeof item.url !== 'string') {
-                                throw new Error('Invalid post');
-                            }
-                            const url = new URL(item.url, document.baseURI);
-                            if (!['http:', 'https:'].includes(url.protocol)) throw new Error('Invalid URL');
-                            return {...item, url: url.href};
-                        });
-                        const content = document.createDocumentFragment();
-                        items.forEach(item => {
-                            const id = String(item.id);
-                            const link = document.createElement('a');
-                            link.href = item.url;
-                            link.textContent = item.label;
-                            link.dataset.postId = id;
-                            if (id === tree.dataset.currentId) link.setAttribute('aria-current', 'page');
-                            const li = document.createElement('li');
-                            li.append(link);
-                            content.append(li);
-                        });
-                        list.replaceChildren(content);
+                        const content = posts.content(result, tree.dataset.currentId);
+                        list.replaceChildren(content.fragment);
                         // Keep keyboard focus useful when the retry button disappears.
                         if (month.open && focusAfterLoad) {
                             (list.querySelector('a') || month.querySelector('summary')).focus();
                         }
                         month.dataset.loaded = '1';
                         retry.hidden = true;
-                        status.textContent = items.length ? '' : messages.empty;
-                        if (!items.length) completion = messages.empty;
+                        status.textContent = content.count ? '' : messages.empty;
+                        if (!content.count) completion = messages.empty;
                     } catch (error) {
                         status.textContent = messages.error;
                         retry.hidden = false;
@@ -155,7 +117,6 @@
                         finish(month, failed, completion);
                     }
                 });
-                drain();
             }
 
             loaders.set(month, () => { enhance(); load(); });

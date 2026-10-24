@@ -5,7 +5,7 @@
 - **Requires at least:** 6.3
 - **Tested up to:** 7.1
 - **Requires PHP:** 7.4
-- **Stable tag:** 0.9.7
+- **Stable tag:** 0.9.8
 - **License:** GPL-2.0-or-later
 - **License URI:** https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -15,7 +15,7 @@ Collapsible navigation for your archives, pages, categories and tags.
 
 Content Trees makes your site's content easier to explore through compact, collapsible navigation.
 
-Content Trees is the modern successor to WP-dTree, rebuilt using native browser features and WordPress APIs. It replaces the aging dTree library with lightweight JavaScript, loads archive post titles on demand, and offers a live preview in the block editor. Built with accessibility in mind, it supports keyboard navigation, touch-friendly controls, and screen-reader announcements.
+Content Trees is the modern successor to WP-dTree, rebuilt using native browser features and WordPress APIs. It replaces the aging dTree library with lightweight JavaScript, loads post titles as you open archive, category and tag branches, and offers a live preview in the block editor. Built with accessibility in mind, it supports keyboard navigation, touch-friendly controls, and screen-reader announcements.
 
 Version 0.9 includes all four basic tree types: archives, pages, categories and tags.
 
@@ -26,7 +26,7 @@ Version 0.9 includes all four basic tree types: archives, pages, categories and 
 * **Category trees:** Follow category hierarchies, choose a starting category, and exclude categories together with their children.
 * **Tag trees:** Browse a flat list of tags and the posts assigned to each tag.
 * **Taxonomy display:** Show or hide posts, post counts and empty terms. Sort categories and tags by name or post count, and posts by title, publication date or last update.
-* **On-demand loading:** Posts are loaded only when a month is expanded, with no pagination or arbitrary limits. Previously loaded titles are cached for faster navigation.
+* **On-demand loading:** Posts are loaded when a month, category or tag is expanded, with no pagination or arbitrary limits. Previously opened branches stay available while you browse.
 * **Archive display:** Show or hide posts and post counts, choose newest or oldest first, and optionally link years and months to their archives.
 * **Current-item navigation:** Highlight the current post, page, category or tag and optionally expand its matching branches automatically.
 * **Branch controls:** Optional Open All / Close All, with the ability to automatically close sibling branches.
@@ -63,6 +63,11 @@ Category counts include unique public posts in that category and its visible chi
 2. An archive tree on a sample blog, expanded to the current post with its title highlighted.
 
 ## Changelog
+
+### 0.9.8
+
+* Open category and tag branches to load their posts, while keeping the full category tree available immediately.
+* Use less server memory when displaying categories and tags.
 
 ### 0.9.7
 

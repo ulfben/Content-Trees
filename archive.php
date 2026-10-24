@@ -10,7 +10,7 @@ namespace ContentTrees;
 defined('ABSPATH') || exit;
 
 add_action('init', static function () {
-    wp_register_script('content-trees', plugins_url('archive.js', __FILE__), array(), VERSION, true);
+    wp_register_script('content-trees', plugins_url('archive.js', __FILE__), array('content-trees-post-loader'), VERSION, true);
     register_block_type(__DIR__ . '/block', array('render_callback' => __NAMESPACE__ . '\\render_archive_block'));
 });
 
