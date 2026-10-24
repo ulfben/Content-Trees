@@ -4,7 +4,7 @@ Tags: archives, pages, navigation, widget, block
 Requires at least: 6.3
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 0.9.5
+Stable tag: 0.9.6
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -62,6 +62,13 @@ Category counts include unique public posts in that category and its visible chi
 2. An archive tree on a sample blog, expanded to the current post with its title highlighted.
 
 == Changelog ==
+
+= 0.9.6 =
+
+* Translate the default Pages heading and Category/Tag editor settings.
+* Keep archive navigation usable without JavaScript when archive links are hidden.
+* Avoid rebuilding the archive index when unrelated pages or other content types change.
+* Move the archive tree implementation into its own file for easier maintenance.
 
 = 0.9.5 =
 
