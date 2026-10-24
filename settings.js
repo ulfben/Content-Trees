@@ -2,8 +2,11 @@
 (() => {
     'use strict';
     const initialized = new WeakSet();
-    function initialize() {
-        document.querySelectorAll('.ctrees-taxonomy-settings').forEach(root => {
+    function find(scope, selector) {
+        return [...(scope.matches?.(selector) ? [scope] : []), ...scope.querySelectorAll(selector)];
+    }
+    function initialize(scope) {
+        find(scope, '.ctrees-taxonomy-settings').forEach(root => {
             if (initialized.has(root)) return;
             initialized.add(root);
             const showPosts = root.querySelector('.ctrees-taxonomy-show-posts');
@@ -23,7 +26,7 @@
                 updateLabels();
             });
         });
-        document.querySelectorAll('.ctrees-page-sort').forEach(sort => {
+        find(scope, '.ctrees-page-sort').forEach(sort => {
             if (initialized.has(sort)) return;
             const order = (sort.closest('.widget-content') || sort.closest('form'))?.querySelector('.ctrees-page-order');
             if (!order) return;
@@ -36,7 +39,7 @@
             sort.addEventListener('change', labels);
             labels();
         });
-        document.querySelectorAll('.ctrees-exclusions').forEach(root => {
+        find(scope, '.ctrees-exclusions').forEach(root => {
             if (initialized.has(root)) return;
             initialized.add(root);
             const input = root.querySelector('.ctrees-post-search');
@@ -98,6 +101,9 @@
             });
         });
     }
-    initialize();
-    new MutationObserver(initialize).observe(document.body, {subtree: true, childList: true});
+    // Core emits these for classic widgets, the Customizer and legacy widget blocks.
+    jQuery(document).on('widget-added widget-updated', (event, widget) => {
+        if (widget?.[0]) initialize(widget[0]);
+    });
+    jQuery(() => initialize(document));
 })();

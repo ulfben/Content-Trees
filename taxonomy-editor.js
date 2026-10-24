@@ -4,53 +4,10 @@
     const el = wp.element.createElement;
     const __ = wp.i18n.__;
     const {InspectorControls, useBlockProps} = wp.blockEditor;
-    const {PanelBody, TextControl, ToggleControl, SelectControl, Button, Disabled} = wp.components;
-    const {useState, useEffect, useRef} = wp.element;
+    const {PanelBody, TextControl, ToggleControl, SelectControl, Disabled} = wp.components;
     const ServerSideRender = wp.serverSideRender.default || wp.serverSideRender;
-    function Selector({value, onChange, endpoint, label, help, single = false}) {
-        const [search, setSearch] = useState('');
-        const [results, setResults] = useState([]);
-        const [labels, setLabels] = useState({});
-        const [status, setStatus] = useState('');
-        const [lookupStatus, setLookupStatus] = useState('');
-        const root = useRef(null);
-        function change(next) { onChange(next); root.current?.querySelector('input')?.focus(); }
-        useEffect(() => {
-            let cancelled = false;
-            setLabels({});
-            setLookupStatus('');
-            if (value.length) wp.apiFetch({path: endpoint + '?include=' + value.join(',')})
-                .then(data => { if (!cancelled) setLabels(Object.fromEntries(data.items.map(item => [item.id, item.label]))); })
-                .catch(() => { if (!cancelled) setLookupStatus(__('Saved labels could not be loaded. Choices are retained.', 'content-trees')); });
-            return () => { cancelled = true; };
-        }, [endpoint, value.join(',')]);
-        useEffect(() => {
-            let cancelled = false;
-            setResults([]);
-            setStatus('');
-            if (!search.trim()) return;
-            setStatus(__('Searching…', 'content-trees'));
-            const timer = setTimeout(() => {
-                wp.apiFetch({path: endpoint + '?search=' + encodeURIComponent(search)})
-                    .then(data => {
-                        if (cancelled) return;
-                        setResults(data.items);
-                        setStatus(data.items.length ? __('Select an item. Refine your search if needed.', 'content-trees') : __('No matching public items.', 'content-trees'));
-                    })
-                    .catch(() => { if (!cancelled) setStatus(__('Search failed. Change the search to try again.', 'content-trees')); });
-            }, 300);
-            return () => { cancelled = true; clearTimeout(timer); };
-        }, [endpoint, search]);
-        return el('div', {ref: root},
-            el(TextControl, {label, help, value: search, onChange: setSearch}),
-            el('p', {role: 'status'}, status || lookupStatus),
-            el('ul', null, value.map(id => el('li', {key: id},
-                el(Button, {variant: 'tertiary', onClick: () => change(value.filter(item => item !== id))},
-                    /* translators: %s: selected item label or ID. */
-                    wp.i18n.sprintf(__('Remove selection: %s', 'content-trees'), labels[id] || '#' + id))))),
-            el('ul', null, results.filter(item => !value.includes(item.id)).map(item => el('li', {key: item.id},
-                el(Button, {variant: 'secondary', onClick: () => change(single ? [item.id] : [...value, item.id])}, item.label + ' (#' + item.id + ')')))));
-    }
+    const Selector = window.ContentTreesEditor.Selector;
+
     const choices = (first, second) => [{label: first, value: 'ASC'}, {label: second, value: 'DESC'}];
     const definitions = [
         {name: 'categories', title: __('Categories', 'content-trees'), panel: __('Category settings', 'content-trees'), endpoint: '/content-trees/v1/category-options',

@@ -4,7 +4,7 @@ Tags: archives, pages, navigation, widget, block
 Requires at least: 6.3
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 0.9.6
+Stable tag: 0.9.7
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -63,22 +63,26 @@ Category counts include unique public posts in that category and its visible chi
 
 == Changelog ==
 
+= 0.9.7 =
+
+* Reduce background processing while configuring tree widgets.
+* Keep selected page, post, category and tag names visible when changing block settings.
+
 = 0.9.6 =
 
-* Translate the default Pages heading and Category/Tag editor settings.
+* Show the default Pages heading and Category/Tag editor settings in your site's language.
 * Keep archive navigation usable without JavaScript when archive links are hidden.
-* Avoid rebuilding the archive index when unrelated pages or other content types change.
-* Move the archive tree implementation into its own file for easier maintenance.
+* Reduce unnecessary processing when pages or other non-post content are edited.
 
 = 0.9.5 =
 
-* Translate default Category and Tag block headings while preserving custom and intentionally blank titles.
+* Show default Category and Tag headings in your site's language while keeping custom and intentionally blank titles.
 
 = 0.9.4 =
 
 * Add Category and Tag trees with blocks, classic widgets and shortcodes.
 * Choose a category root, exclude terms or posts, and configure ordering, counts, empty terms and branch controls.
-* Skip post-title and permalink preparation when individual posts are hidden.
+* Reduce server work when individual posts are hidden.
 
 = 0.8.1 =
 
@@ -95,4 +99,4 @@ Category counts include unique public posts in that category and its visible chi
 * Introduce the archive tree with complete-month loading, current-post highlighting and configurable year/month navigation.
 * Add a block with live preview, a classic widget and shortcode support.
 * Include post counts, ordering, searchable exclusions, Open All / Close All and optional closing of branches at the same level.
-* Rebuild navigation with native browser controls, on-demand requests, cached archive counts and keyboard, touch and screen-reader support.
+* Browse archives with keyboard, touch and screen-reader support.

@@ -320,7 +320,7 @@ function register_taxonomy_tree($taxonomy, $name, $widget) {
 add_action('init', static function () {
     wp_register_script('content-trees-taxonomy', plugins_url('taxonomy.js', __FILE__), array(), VERSION, true);
     wp_register_script('content-trees-taxonomy-editor', plugins_url('taxonomy-editor.js', __FILE__),
-        array('wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-server-side-render', 'wp-api-fetch'), VERSION, true);
+        array('wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-server-side-render', 'content-trees-editor-selector'), VERSION, true);
 	wp_set_script_translations( 'content-trees-taxonomy-editor', 'content-trees' );
 });
 

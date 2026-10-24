@@ -4,56 +4,20 @@
     const el = wp.element.createElement;
     const __ = wp.i18n.__;
     const {InspectorControls, useBlockProps} = wp.blockEditor;
-    const {PanelBody, TextControl, SelectControl, ToggleControl, Button, Disabled} = wp.components;
-    const {useState, useEffect, useRef} = wp.element;
+    const {PanelBody, TextControl, SelectControl, ToggleControl, Disabled} = wp.components;
     const ServerSideRender = wp.serverSideRender.default || wp.serverSideRender;
 
-    function PageSelector({value, onChange, label, help, multiple = false}) {
-        const [search, setSearch] = useState('');
-        const [results, setResults] = useState([]);
-        const [labels, setLabels] = useState({});
-        const [status, setStatus] = useState('');
-        const root = useRef(null);
-        function change(next) {
-            onChange(next);
-            root.current?.querySelector('input')?.focus();
+    const Selector = window.ContentTreesEditor.Selector;
+    const pageSelector = {
+        endpoint: '/content-trees/v1/page-options',
+        messages: {
+            found: __('Select a page. Refine your search if needed.', 'content-trees'),
+            empty: __('No matching public pages.', 'content-trees'),
+            lookupError: __('Page titles could not be loaded. Saved choices are retained.', 'content-trees'),
+            /* translators: %s: page title or ID. */
+            remove: __('Remove page: %s', 'content-trees')
         }
-        useEffect(() => {
-            let cancelled = false;
-            setLabels({});
-            if (value.length) wp.apiFetch({path: '/content-trees/v1/page-options?include=' + value.join(',')})
-                .then(data => { if (!cancelled) setLabels(Object.fromEntries(data.items.map(item => [item.id, item.label]))); })
-                .catch(() => { if (!cancelled) setStatus(__('Page titles could not be loaded. Saved choices are retained.', 'content-trees')); });
-            return () => { cancelled = true; };
-        }, [value.join(',')]);
-        useEffect(() => {
-            let cancelled = false;
-            setResults([]);
-            setStatus('');
-            if (!search.trim()) return;
-            setStatus(__('Searching…', 'content-trees'));
-            const timer = setTimeout(() => {
-                wp.apiFetch({path: '/content-trees/v1/page-options?search=' + encodeURIComponent(search)})
-                    .then(data => {
-                        if (cancelled) return;
-                        setResults(data.items);
-                        setStatus(data.items.length ? __('Select a page. Refine your search if needed.', 'content-trees') : __('No matching public pages.', 'content-trees'));
-                    })
-                    .catch(() => { if (!cancelled) setStatus(__('Search failed. Change the search to try again.', 'content-trees')); });
-            }, 300);
-            return () => { cancelled = true; clearTimeout(timer); };
-        }, [search]);
-        return el('div', {ref: root},
-            el(TextControl, {label, help, value: search, onChange: setSearch}),
-            el('p', {role: 'status'}, status),
-            el('ul', null, value.map(id => el('li', {key: id},
-                el(Button, {variant: 'tertiary', onClick: () => change(value.filter(item => item !== id))},
-                    /* translators: %s: page title or ID. */
-                    wp.i18n.sprintf(__('Remove page: %s', 'content-trees'), labels[id] || '#' + id))))),
-            el('ul', null, results.filter(item => !value.includes(item.id)).map(item => el('li', {key: item.id},
-                el(Button, {variant: 'secondary', onClick: () => change(multiple ? [...value, item.id] : [item.id])}, item.label + ' (#' + item.id + ')'))))
-        );
-    }
+    };
 
     wp.blocks.registerBlockType('content-trees/pages', {
         edit: function ({attributes, setAttributes}) {
@@ -67,7 +31,7 @@
                             value: title,
                             onChange: value => setAttributes({title: value})
                         }),
-                        el(PageSelector, {label: __('Start at page', 'content-trees'),
+                        el(Selector, {...pageSelector, single: true, label: __('Start at page', 'content-trees'),
                             help: __('Show the selected page and its child pages. Leave empty to show all pages.', 'content-trees'),
                             value: attributes.root ? [attributes.root] : [], onChange: ids => setAttributes({root: ids[0] || 0})}),
                         el(SelectControl, {label: __('Sort by', 'content-trees'), value: attributes.sortBy,
@@ -92,9 +56,9 @@
                     el(ToggleControl, {label: __('Close other branches at the same level', 'content-trees'),
                         help: __('Opening a branch closes its siblings and their child branches. Open All still opens everything.', 'content-trees'),
                         checked: attributes.closeSiblings, onChange: closeSiblings => setAttributes({closeSiblings})}),
-                    el(PageSelector, {label: __('Exclude pages', 'content-trees'),
+                    el(Selector, {...pageSelector, label: __('Exclude pages', 'content-trees'),
                         help: __('Hide selected pages and all their child pages from this tree.', 'content-trees'),
-                        multiple: true, value: attributes.exclude, onChange: exclude => setAttributes({exclude})})
+                        value: attributes.exclude, onChange: exclude => setAttributes({exclude})})
                 ),
                 el('div', useBlockProps(),
                     el(Disabled, null, el(ServerSideRender, {block: 'content-trees/pages', attributes: {...attributes, title}})),

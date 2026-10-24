@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Content Trees
  * Description: Collapsible navigation for your archives, pages, categories and tags.
- * Version: 0.9.6
+ * Version: 0.9.7
  * Requires at least: 6.3
  * Requires PHP: 7.4
  * License: GPL-2.0-or-later
@@ -13,10 +13,18 @@ namespace ContentTrees;
 
 defined('ABSPATH') || exit;
 
-const VERSION = '0.9.6';
+const VERSION = '0.9.7';
 
 function register_assets() {
     wp_register_style('content-trees', plugins_url('archive.css', __FILE__), array(), VERSION);
+	wp_register_script(
+		'content-trees-editor-selector',
+		plugins_url( 'editor-selector.js', __FILE__ ),
+		array( 'wp-element', 'wp-components', 'wp-i18n', 'wp-api-fetch' ),
+		VERSION,
+		true
+	);
+	wp_set_script_translations( 'content-trees-editor-selector', 'content-trees' );
 }
 
 add_action( 'init', __NAMESPACE__ . '\register_assets' );
@@ -56,7 +64,7 @@ function post_node($post) {
 
 add_action('admin_enqueue_scripts', static function ($hook) {
     if ($hook === 'widgets.php' || $hook === 'customize.php') {
-        wp_enqueue_script('ctrees-settings', plugins_url('settings.js', __FILE__), array('wp-api-fetch'), VERSION, true);
+        wp_enqueue_script('ctrees-settings', plugins_url('settings.js', __FILE__), array('wp-api-fetch', 'jquery'), VERSION, true);
     }
 });
 
