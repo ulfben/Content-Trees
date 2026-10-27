@@ -32,6 +32,9 @@ jobs:
           cache: npm
       - run: composer install --no-interaction --prefer-dist
       - run: npm ci --ignore-scripts
+      - run: composer check:encoding
+      - run: composer check:metadata
+      - run: composer check:bootstrap
       - run: composer lint
       - run: composer phpcs
       - run: npm run lint

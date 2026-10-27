@@ -4,7 +4,7 @@ Tags: archives, pages, navigation, widget, block
 Requires at least: 6.3
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 0.9.9
+Stable tag: 0.9.10
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -62,6 +62,11 @@ Category counts include unique public posts in that category and its visible chi
 2. An archive tree on a sample blog, expanded to the current post with its title highlighted.
 
 == Changelog ==
+
+= 0.9.10 =
+
+* Restore loading announcements and alphabetical sort labels, including their translations.
+* Refresh editor scripts correctly when the plugin is updated.
 
 = 0.9.9 =
 

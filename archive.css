@@ -151,6 +151,8 @@
 }
 .ctrees-month-link {
 	margin-block: 0.25rem;
+	display: flex;
+	align-items: baseline;
 }
 .ctrees-year > .ctrees-month-link {
 	margin-inline-start: var(--ctrees-indent);

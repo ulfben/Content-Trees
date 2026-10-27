@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Content Trees
  * Description: Collapsible navigation for your archives, pages, categories and tags.
- * Version: 0.9.9
+ * Version: 0.9.10
  * Requires at least: 6.3
  * Requires PHP: 7.4
  * License: GPL-2.0-or-later
@@ -15,7 +15,7 @@ namespace ContentTrees;
 
 defined( 'ABSPATH' ) || exit;
 
-const VERSION = '0.9.9';
+const VERSION = '0.9.10';
 
 require_once __DIR__ . '/tree.php';
 

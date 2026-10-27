@@ -4,7 +4,7 @@ if ( PHP_SAPI !== 'cli' ) {
 	exit( 2 ); }
 define( 'WP_INSTALLING', false );
 require __DIR__ . '/bootstrap.php';
-if ( ! CONTENT_TREES_DISPOSABLE_TEST_SITE || ! in_array( DB_NAME, array( 'content_trees_test', 'content_trees_minimum' ), true ) || DB_HOST !== '127.0.0.1:33080' ) {
+if ( ! CONTENT_TREES_DISPOSABLE_TEST_SITE || ! in_array( DB_NAME, array( 'content_trees_test', 'content_trees_minimum' ), true ) || DB_HOST !== CONTENT_TREES_TEST_DB_HOST ) {
 	exit( 2 ); }
 set_exception_handler(
 	static function ( $exception ) {

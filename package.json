@@ -5,7 +5,7 @@
     "lint": "eslint .",
     "format": "prettier --write \"*.js\" \"*.css\" \"{block,pages}/*.js\" \"{block,pages,categories,tags}/*.json\" \"tests/browser/*.mjs\"",
     "format:check": "prettier --check \"*.js\" \"*.css\" \"{block,pages}/*.js\" \"{block,pages,categories,tags}/*.json\" \"tests/browser/*.mjs\"",
-    "test:browser": "node tests/browser/check-taxonomy-baseline-browser.mjs && node tests/browser/check-taxonomy-controls-browser.mjs && node tests/browser/check-taxonomy-loading-browser.mjs && node tests/browser/check-pages-browser.mjs"
+    "test:browser": "node tests/browser/check-taxonomy-baseline-browser.mjs && node tests/browser/check-taxonomy-controls-browser.mjs && node tests/browser/check-taxonomy-loading-browser.mjs && node tests/browser/check-pages-browser.mjs && node tests/browser/check-archive-browser.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

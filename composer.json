@@ -4,9 +4,9 @@
     "type": "project",
     "license": "GPL-2.0-or-later",
     "require-dev": {
-        "phpcompatibility/php-compatibility": "^10.0@dev",
-        "phpcompatibility/phpcompatibility-paragonie": "^2.0@dev",
-        "phpcompatibility/phpcompatibility-wp": "^3.0@dev",
+        "phpcompatibility/php-compatibility": "10.0.0-alpha2",
+        "phpcompatibility/phpcompatibility-paragonie": "2.0.0-alpha2",
+        "phpcompatibility/phpcompatibility-wp": "3.0.0-alpha2",
         "wp-coding-standards/wpcs": "^3.0"
     },
     "config": {
@@ -16,6 +16,9 @@
         "sort-packages": true
     },
     "scripts": {
+        "check:encoding": "@php tests/check-encoding.php",
+        "check:metadata": "@php tests/check-metadata.php",
+        "check:bootstrap": "@php tests/check-test-bootstrap.php",
         "lint": "@php tests/lint.php",
         "phpcs": "@php vendor/bin/phpcs --runtime-set ignore_warnings_on_exit 1",
         "phpcbf": "@php vendor/bin/phpcbf",
@@ -25,7 +28,8 @@
             "@php tests/integration/check-taxonomy-loading.php",
             "@php tests/integration/check-taxonomy-selectors.php",
             "@php tests/integration/check-taxonomy-headings.php",
-            "@php tests/integration/check-consolidation.php"
+            "@php tests/integration/check-consolidation.php",
+            "@php tests/integration/check-interface-text.php"
         ]
     }
 }

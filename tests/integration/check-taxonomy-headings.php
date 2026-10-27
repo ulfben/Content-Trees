@@ -9,7 +9,7 @@ define( 'WP_INSTALLING', false );
 require __DIR__ . '/bootstrap.php';
 if ( ! defined( 'CONTENT_TREES_DISPOSABLE_TEST_SITE' ) || ! CONTENT_TREES_DISPOSABLE_TEST_SITE
 	|| DB_NAME !== ( $profile === 'minimum' ? 'content_trees_minimum' : 'content_trees_test' )
-	|| DB_HOST !== '127.0.0.1:33080' ) {
+	|| DB_HOST !== CONTENT_TREES_TEST_DB_HOST ) {
 	exit( 2 ); }
 set_exception_handler(
 	static function ( $error ) {

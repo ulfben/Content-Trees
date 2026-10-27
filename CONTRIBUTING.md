@@ -8,6 +8,9 @@ Install PHP 7.4 or later with `mysqli`, `pdo_mysql`, DOM and mbstring, Composer 
 composer install
 npm ci
 composer lint
+composer check:encoding
+composer check:metadata
+composer check:bootstrap
 composer phpcs
 npm run lint
 npm run format:check
@@ -15,17 +18,19 @@ npm run format:check
 
 `composer phpcs` checks the full WordPress standard and PHP 7.4–8.5 compatibility. Errors fail the check. Warnings remain visible without failing it; the existing taxonomy-query performance warning is deferred. Use `composer phpcbf` and `npm run format` for automatic formatting.
 
+The encoding check rejects invalid UTF-8 and common mojibake in tracked text files. Save sources as UTF-8 without a BOM and always specify UTF-8 when reading or writing source files in scripts. Metadata checks evaluate the editor asset files so their versions cannot drift from the plugin version. PHPCompatibility uses the exact prerelease versions already pinned in the lockfile; dependency updates should be deliberate.
+
 The mechanical PHP formatting commit is listed in `.git-blame-ignore-revs`. To skip it in local blame output, run `git config blame.ignoreRevsFile .git-blame-ignore-revs`.
 
 ## WordPress integration tests
 
-Use a disposable WordPress installation with this checkout activated as `content-trees`. The suite deliberately refuses other database names or hosts:
+Use a disposable WordPress installation with this checkout activated as `content-trees`. The suite deliberately requires:
 
-- Database: `content_trees_test` (or `content_trees_minimum` for the existing local minimum fixture).
-- Database host: `127.0.0.1:33080`.
+- Database: `content_trees_test` (or `content_trees_minimum`).
+- Database host: `127.0.0.1:33080` by default. Set `CONTENT_TREES_TEST_DB_HOST=127.0.0.1:PORT` for another loopback port; it must match the site's `DB_HOST`. Remote hosts remain rejected.
 - Add `define( 'CONTENT_TREES_DISPOSABLE_TEST_SITE', true );` to its `wp-config.php`.
 
-Set `CONTENT_TREES_TEST_WP_ROOT` to its absolute directory, then run `composer test:integration`. Tests create and remove their own content and restore saved widget settings. They must run sequentially against a shared database. The existing parent-workspace fixtures remain supported without the environment variable.
+Set `CONTENT_TREES_TEST_WP_ROOT` to its absolute directory, then run `composer test:integration`. Tests create and remove their own content and restore saved widget settings. They must run sequentially against a shared database. The public bootstrap has no workspace-specific paths; private local wrappers select the existing workspace fixtures separately.
 
 The integration suite also writes browser fixtures to ignored `tests/results/`. After it passes:
 
@@ -34,7 +39,7 @@ npx playwright install chromium
 npm run test:browser
 ```
 
-Set `CONTENT_TREES_BROWSER` to an existing Chromium or Edge executable to use that browser instead. These tests cover native navigation, multiple tree instances, branch controls, complete lists, shared request limits, retries, timeouts, focus, announcements and safe links. Automated checks do not establish screen-reader compatibility.
+Set `CONTENT_TREES_BROWSER` to an existing Chromium or Edge executable to use that browser instead. These tests cover native navigation, multiple tree instances, grouped/flat Archive controls, complete lists, shared request limits, retries, timeouts, focus, announcements and safe links. Automated checks do not establish screen-reader compatibility.
 
 ## GitHub Actions
 

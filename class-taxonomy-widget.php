@@ -170,7 +170,7 @@ class Taxonomy_Widget extends \WP_Widget {
 				'name'  => __( 'Name', 'content-trees' ),
 				'count' => __( 'Post count', 'content-trees' ),
 			);
-		$alphabet = array( __( 'AÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œZ', 'content-trees' ), __( 'ZÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œA', 'content-trees' ) );
+		$alphabet = array( __( 'A–Z', 'content-trees' ), __( 'Z–A', 'content-trees' ) );
 		$dates    = array( __( 'Oldest first', 'content-trees' ), __( 'Newest first', 'content-trees' ) );
 		$labels   = $posts ? array(
 			'date'     => $dates,

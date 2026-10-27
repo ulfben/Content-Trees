@@ -410,9 +410,9 @@ function render( $args = array() ) {
 	}
 	enqueue_assets();
 	$messages = array(
-		'loading'      => __( 'Loading postsÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦', 'content-trees' ),
+		'loading'      => __( 'Loading posts…', 'content-trees' ),
 		'loaded'       => __( 'Posts loaded.', 'content-trees' ),
-		'bulkLoading'  => __( 'Loading archive postsÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦', 'content-trees' ),
+		'bulkLoading'  => __( 'Loading archive posts…', 'content-trees' ),
 		'bulkComplete' => __( 'Archive loading finished.', 'content-trees' ),
 		'bulkError'    => __( 'Archive loading finished. Some months could not be loaded. Use Try again in those months.', 'content-trees' ),
 		'bulkOpened'   => __( 'Archive expanded.', 'content-trees' ),
@@ -508,7 +508,6 @@ endif;
 		<?php endforeach; ?>
 	</nav>
 	<?php
-	// Only remove template whitespace between tags, never whitespace inside labels.
 	return trim( ob_get_clean() );
 }
 

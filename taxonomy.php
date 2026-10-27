@@ -587,12 +587,12 @@ function render_taxonomy( $taxonomy, $args = array() ) {
 			'collapsed' => __( 'All tag branches collapsed.', 'content-trees' ),
 		);
 	$messages += array(
-		'loading'      => __( 'Loading postsâ€¦', 'content-trees' ),
+		'loading'      => __( 'Loading posts…', 'content-trees' ),
 		'loaded'       => __( 'Posts loaded.', 'content-trees' ),
 		'empty'        => __( 'No posts in this term.', 'content-trees' ),
 		'error'        => __( 'Posts could not be loaded. Try again or visit the term archive.', 'content-trees' ),
 		'retry'        => __( 'Try again', 'content-trees' ),
-		'bulkLoading'  => __( 'Loading tree postsâ€¦', 'content-trees' ),
+		'bulkLoading'  => __( 'Loading tree posts…', 'content-trees' ),
 		'bulkComplete' => __( 'Tree loading finished.', 'content-trees' ),
 		'bulkError'    => __( 'Tree loading finished. Some branches could not be loaded. Use Try again in those branches.', 'content-trees' ),
 	);

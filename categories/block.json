@@ -2,7 +2,7 @@
 	"$schema": "https://schemas.wp.org/trunk/block.json",
 	"apiVersion": 3,
 	"name": "content-trees/categories",
-	"version": "0.9.9",
+	"version": "0.9.10",
 	"title": "Content Trees: Categories",
 	"category": "widgets",
 	"icon": "category",
