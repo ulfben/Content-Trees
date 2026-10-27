@@ -1,5 +1,7 @@
 # Content Trees
 
+[![CI checks](https://github.com/ulfben/Content-Trees/actions/workflows/checks.yml/badge.svg?branch=main&event=push)](https://github.com/ulfben/Content-Trees/actions/workflows/checks.yml)
+
 - **Contributors:** ulfben
 - **Tags:** archives, pages, navigation, widget, block
 - **Requires at least:** 6.3
