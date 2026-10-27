@@ -1,13 +1,29 @@
 <?php
+/**
+ * Category and Tag tree data, options and rendering.
+ *
+ * @package ContentTrees
+ */
+
 namespace ContentTrees;
 
 defined( 'ABSPATH' ) || exit;
 
-/** Only the two built-in navigation providers are supported. */
+/**
+ * Only the two built-in navigation providers are supported.
+ *
+ * @param string $taxonomy Built-in taxonomy name.
+ */
 function taxonomy_title( $taxonomy ) {
-	return $taxonomy === 'category' ? __( 'Categories', 'content-trees' ) : __( 'Tags', 'content-trees' );
+	return 'category' === $taxonomy ? __( 'Categories', 'content-trees' ) : __( 'Tags', 'content-trees' );
 }
 
+/**
+ * Normalize options for the selected built-in taxonomy.
+ *
+ * @param string $taxonomy Built-in taxonomy name.
+ * @param array  $args Tree options or theme widget wrappers.
+ */
 function taxonomy_options( $taxonomy, $args = array() ) {
 	$defaults           = array(
 		'title'          => taxonomy_title( $taxonomy ),
@@ -29,11 +45,11 @@ function taxonomy_options( $taxonomy, $args = array() ) {
 	);
 	$args               = array_intersect_key( wp_parse_args( $args, $defaults ), $defaults );
 	$args['title']      = is_string( $args['title'] ) ? sanitize_text_field( $args['title'] ) : $defaults['title'];
-	$args['show_title'] = enabled( $args['show_title'] ) && $args['title'] !== '';
+	$args['show_title'] = enabled( $args['show_title'] ) && '' !== $args['title'];
 	foreach ( array( 'show_posts', 'show_counts', 'hide_empty', 'auto_open', 'show_controls', 'close_siblings' ) as $flag ) {
 		$args[ $flag ] = enabled( $args[ $flag ] );
 	}
-	$args['root']    = $taxonomy !== 'category' || empty( $args['root'] ) ? 0 : ( exclusion_ids( array( $args['root'] ) )[0] ?? -1 );
+	$args['root']    = 'category' !== $taxonomy || empty( $args['root'] ) ? 0 : ( exclusion_ids( array( $args['root'] ) )[0] ?? -1 );
 	$args['open_to'] = exclusion_ids( array( $args['open_to'] ) )[0] ?? 0;
 	foreach ( array( 'excluded_terms', 'excluded_posts' ) as $field ) {
 		$args[ $field ] = exclusion_ids( $args[ $field ] ); }
@@ -44,18 +60,24 @@ function taxonomy_options( $taxonomy, $args = array() ) {
 	return $args;
 }
 
-/** Resolve public term choices, including empty terms, without content counts. */
-function taxonomy_option_nodes( $taxonomy, $include = array(), $search = '' ) {
+/**
+ * Resolve public term choices, including empty terms, without content counts.
+ *
+ * @param string $taxonomy Built-in taxonomy name.
+ * @param int[]  $included_ids IDs to resolve, or an empty array to search.
+ * @param string $search Search text.
+ */
+function taxonomy_option_nodes( $taxonomy, $included_ids = array(), $search = '' ) {
 	if ( ! in_array( $taxonomy, array( 'category', 'post_tag' ), true ) ) {
 		return array(); }
-	$ids = exclusion_ids( $include );
-	if ( $include && ! $ids ) {
+	$ids = exclusion_ids( $included_ids );
+	if ( $included_ids && ! $ids ) {
 		return array(); }
 	$args = array(
 		'taxonomy'               => $taxonomy,
 		'hide_empty'             => false,
 		'hierarchical'           => false,
-		'number'                 => $include ? 0 : 20,
+		'number'                 => $included_ids ? 0 : 20,
 		'orderby'                => 'name',
 		'order'                  => 'ASC',
 		'ctrees_name_order'      => 'ASC',
@@ -78,7 +100,7 @@ function taxonomy_option_nodes( $taxonomy, $include = array(), $search = '' ) {
 		$label   = html_entity_decode( wp_strip_all_tags( $term->name, true ), ENT_QUOTES | ENT_HTML5, 'UTF-8' );
 		$items[] = array(
 			'id'    => (int) $term->term_id,
-			'label' => $label !== '' ? $label : __( '(Untitled)', 'content-trees' ),
+			'label' => '' !== $label ? $label : __( '(Untitled)', 'content-trees' ),
 			'url'   => esc_url_raw( $url ),
 		);
 	}
@@ -113,7 +135,7 @@ add_action(
 					),
 					'callback'            => static function ( $request ) use ( $taxonomy ) {
 						$ids = exclusion_ids( $request['include'] );
-						if ( $request['include'] !== '' && ! $ids ) {
+						if ( '' !== $request['include'] && ! $ids ) {
 							return rest_ensure_response( array( 'items' => array() ) ); }
 						return rest_ensure_response( array( 'items' => taxonomy_option_nodes( $taxonomy, $ids, $request['search'] ) ) );
 					},
@@ -123,7 +145,12 @@ add_action(
 	}
 );
 
-/** Keep the block adapter explicit; saved first-slice attributes retain defaults. */
+/**
+ * Keep the block adapter explicit; saved attributes retain defaults.
+ *
+ * @param string $taxonomy Built-in taxonomy name.
+ * @param array  $attributes Saved block attributes.
+ */
 function taxonomy_block_options( $taxonomy, $attributes ) {
 	$map  = array(
 		'title'         => 'title',
@@ -153,17 +180,21 @@ function taxonomy_block_options( $taxonomy, $attributes ) {
 add_filter(
 	'get_terms_orderby',
 	static function ( $orderby, $args ) {
-		return ! empty( $args['ctrees_name_order'] ) ? $orderby . ( $args['ctrees_name_order'] === 'DESC' ? ' DESC' : ' ASC' ) . ', t.term_id' : $orderby;
+		return ! empty( $args['ctrees_name_order'] ) ? $orderby . ( 'DESC' === $args['ctrees_name_order'] ? ' DESC' : ' ASC' ) . ', t.term_id' : $orderby;
 	},
 	10,
 	2
 );
 
-/** Resolve original category ancestry without disclosing filtered parent names. */
+/**
+ * Resolve original category ancestry without disclosing filtered parent names.
+ *
+ * @param string $taxonomy Built-in taxonomy name.
+ */
 function taxonomy_original_parents( $taxonomy ) {
 	global $wpdb;
 	$original = array();
-	if ( $taxonomy === 'category' ) {
+	if ( 'category' === $taxonomy ) {
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Request-local ID/parent edges preserve ancestry around filtered terms; labels and links use filtered core APIs, with no persistent snapshot.
 		$rows = $wpdb->get_results( $wpdb->prepare( 'SELECT term_id, parent FROM %i WHERE taxonomy = %s', $wpdb->term_taxonomy, $taxonomy ) );
 		foreach ( $rows as $row ) {
@@ -172,56 +203,31 @@ function taxonomy_original_parents( $taxonomy ) {
 	return $original;
 }
 
-function taxonomy_descendants( $roots, $parents ) {
-	$children = $result = array();
-	foreach ( $parents as $id => $parent ) {
-		$children[ $parent ][] = $id; }
-	while ( $roots ) {
-		$id = array_pop( $roots );
-		if ( isset( $result[ $id ] ) ) {
-			continue; }
-		$result[ $id ] = true;
-		foreach ( $children[ $id ] ?? array() as $child ) {
-			$roots[] = $child; }
-	}
-	return $result;
-}
-
+/**
+ * Promote visible terms through missing ancestors and break cycles.
+ *
+ * @param string     $taxonomy Built-in taxonomy name.
+ * @param array      $terms Visible terms.
+ * @param array|null $original Original parent edges, or null to resolve them.
+ * @param int        $root Scoped root ID, or zero.
+ */
 function taxonomy_parents( $taxonomy, $terms, $original = null, $root = 0 ) {
-	if ( $original === null ) {
+	if ( null === $original ) {
 		$original = taxonomy_original_parents( $taxonomy ); }
 	$parents = array();
 	foreach ( $terms as $id => $term ) {
-		$parent = $taxonomy === 'category' && $id !== $root ? (int) $term['term']->parent : 0;
-		$seen   = array( $id => true );
-		while ( $parent && ! isset( $terms[ $parent ] ) ) {
-			if ( isset( $seen[ $parent ] ) || ! isset( $original[ $parent ] ) ) {
-				$parent = 0;
+		$parent_id = 'category' === $taxonomy && $id !== $root ? (int) $term['term']->parent : 0;
+		$seen      = array( $id => true );
+		while ( $parent_id && ! isset( $terms[ $parent_id ] ) ) {
+			if ( isset( $seen[ $parent_id ] ) || ! isset( $original[ $parent_id ] ) ) {
+				$parent_id = 0;
 				break; }
-			$seen[ $parent ] = true;
-			$parent          = $original[ $parent ];
+			$seen[ $parent_id ] = true;
+			$parent_id          = $original[ $parent_id ];
 		}
-		$parents[ $id ] = $parent;
+		$parents[ $id ] = $parent_id;
 	}
-	// Break the smallest-ID edge in malformed cycles, independent of name order.
-	$ids = array_keys( $parents );
-	sort( $ids, SORT_NUMERIC );
-	$visited = array();
-	foreach ( $ids as $id ) {
-		$path      = array();
-		$positions = array();
-		while ( $id && isset( $parents[ $id ] ) && ! isset( $visited[ $id ] ) ) {
-			if ( isset( $positions[ $id ] ) ) {
-				$parents[ min( array_slice( $path, $positions[ $id ] ) ) ] = 0;
-				break;
-			}
-			$positions[ $id ] = count( $path );
-			$path[]           = $id;
-			$id               = $parents[ $id ];
-		}
-		foreach ( $path as $node ) {
-			$visited[ $node ] = true; }
-	}
+	$parents = acyclic_parents( $parents );
 	return $parents;
 }
 
@@ -372,7 +378,12 @@ add_action(
 	}
 );
 
-/** Complete term structure and lightweight memberships; no post presentation. */
+/**
+ * Complete term structure and lightweight memberships; no post presentation.
+ *
+ * @param string $taxonomy Built-in taxonomy name.
+ * @param array  $args Tree options or theme widget wrappers.
+ */
 function taxonomy_data( $taxonomy, $args = array() ) {
 	$data = array(
 		'terms'       => array(),
@@ -384,8 +395,7 @@ function taxonomy_data( $taxonomy, $args = array() ) {
 	);
 	if ( ! in_array( $taxonomy, array( 'category', 'post_tag' ), true ) ) {
 		return $data; }
-	// Retain the first slice's internal boolean convenience for existing checks.
-	$args    = taxonomy_options( $taxonomy, is_bool( $args ) ? array( 'show_posts' => $args ) : $args );
+	$args    = taxonomy_options( $taxonomy, $args );
 	$results = get_terms(
 		array(
 			'taxonomy'               => $taxonomy,
@@ -394,7 +404,7 @@ function taxonomy_data( $taxonomy, $args = array() ) {
 			'number'                 => 0,
 			'orderby'                => 'name',
 			'order'                  => 'ASC',
-			'ctrees_name_order'      => $args['sort_by'] === 'name' ? $args['order'] : 'ASC',
+			'ctrees_name_order'      => 'name' === $args['sort_by'] ? $args['order'] : 'ASC',
 			'update_term_meta_cache' => false,
 		)
 	);
@@ -410,26 +420,26 @@ function taxonomy_data( $taxonomy, $args = array() ) {
 		$data['terms'][ (int) $term->term_id ] = array(
 			'term'  => $term,
 			'url'   => $url,
-			'label' => $label !== '' ? $label : __( '(Untitled)', 'content-trees' ),
+			'label' => '' !== $label ? $label : __( '(Untitled)', 'content-trees' ),
 		);
 	}
 	if ( ! $data['terms'] ) {
 		return $data; }
 	$original = taxonomy_original_parents( $taxonomy );
 	if ( $args['excluded_terms'] ) {
-		$excluded      = $taxonomy === 'category' ? taxonomy_descendants( $args['excluded_terms'], $original ) : array_fill_keys( $args['excluded_terms'], true );
+		$excluded      = 'category' === $taxonomy ? descendants( $args['excluded_terms'], $original ) : array_fill_keys( $args['excluded_terms'], true );
 		$data['terms'] = array_diff_key( $data['terms'], $excluded );
 	}
 	if ( $args['root'] ) {
 		if ( ! isset( $data['terms'][ $args['root'] ] ) ) {
 			$data['terms'] = array();
 			return $data; }
-		$data['terms'] = array_intersect_key( $data['terms'], taxonomy_descendants( array( $args['root'] ), $original ) );
+		$data['terms'] = array_intersect_key( $data['terms'], descendants( array( $args['root'] ), $original ) );
 	}
 	if ( ! $data['terms'] ) {
 		return $data; }
 	$data['parents']   = taxonomy_parents( $taxonomy, $data['terms'], $original, $args['root'] );
-	$needs_memberships = $args['show_posts'] || $args['show_counts'] || $args['hide_empty'] || $args['sort_by'] === 'count';
+	$needs_memberships = $args['show_posts'] || $args['show_counts'] || $args['hide_empty'] || 'count' === $args['sort_by'];
 	$post_ids          = array();
 	if ( $needs_memberships ) {
 		$query    = taxonomy_post_query( $taxonomy, array_keys( $data['terms'] ), $args, true );
@@ -445,10 +455,10 @@ function taxonomy_data( $taxonomy, $args = array() ) {
 	$unique = array();
 	foreach ( $data['memberships'] as $term_id => $posts ) {
 		foreach ( $posts as $id => $unused ) {
-			$parent = $term_id;
-			while ( $parent ) {
-				$unique[ $parent ][ $id ] = true;
-				$parent                   = $data['parents'][ $parent ];
+			$parent_id = $term_id;
+			while ( $parent_id ) {
+				$unique[ $parent_id ][ $id ] = true;
+				$parent_id                   = $data['parents'][ $parent_id ];
 			}
 		}
 	}
@@ -459,14 +469,14 @@ function taxonomy_data( $taxonomy, $args = array() ) {
 		$data['counts'][ $id ]                         = count( $unique[ $id ] ?? array() );
 		$data['children'][ $data['parents'][ $id ] ][] = $id;
 	}
-	if ( $args['sort_by'] === 'count' ) {
+	if ( 'count' === $args['sort_by'] ) {
 		$counts = $data['counts'];
 		foreach ( $data['children'] as &$siblings ) {
 			usort(
 				$siblings,
 				static function ( $a, $b ) use ( $counts, $args ) {
 					$comparison = $counts[ $a ] <=> $counts[ $b ];
-					return $comparison ? ( $args['order'] === 'DESC' ? -$comparison : $comparison ) : ( $a <=> $b );
+					return $comparison ? ( 'DESC' === $args['order'] ? -$comparison : $comparison ) : ( $a <=> $b );
 				}
 			);
 		}
@@ -475,9 +485,19 @@ function taxonomy_data( $taxonomy, $args = array() ) {
 	return $data;
 }
 
-function render_taxonomy_items( $parent, $data, $current_term, $current_post, $open, $args ) {
+/**
+ * Render nested terms and initially open post lists.
+ *
+ * @param int   $parent_id Parent node ID.
+ * @param array $data Visible terms, memberships and counts.
+ * @param int   $current_term Current term ID.
+ * @param int   $current_post Current post ID.
+ * @param array $open Set of initially open branches.
+ * @param array $args Tree options or theme widget wrappers.
+ */
+function render_taxonomy_items( $parent_id, $data, $current_term, $current_post, $open, $args ) {
 	$html = '';
-	foreach ( $data['children'][ $parent ] ?? array() as $id ) {
+	foreach ( $data['children'][ $parent_id ] ?? array() as $id ) {
 		$term = $data['terms'][ $id ];
 		$link = '<a class="ctrees-term-link" href="' . esc_url( $term['url'] ) . '"'
 			. ( $id === $current_term ? ' aria-current="page"' : '' ) . '>' . esc_html( $term['label'] ) . '</a>';
@@ -508,13 +528,19 @@ function render_taxonomy_items( $parent, $data, $current_term, $current_post, $o
 	return $html;
 }
 
+/**
+ * Render a Category or Tag tree.
+ *
+ * @param string $taxonomy Built-in taxonomy name.
+ * @param array  $args Tree options or theme widget wrappers.
+ */
 function render_taxonomy( $taxonomy, $args = array() ) {
 	if ( ! in_array( $taxonomy, array( 'category', 'post_tag' ), true ) ) {
 		return ''; }
 	$args         = taxonomy_options( $taxonomy, $args );
 	$data         = taxonomy_data( $taxonomy, $args );
 	$queried      = get_queried_object();
-	$current_term = ( ( $taxonomy === 'category' && is_category() ) || ( $taxonomy === 'post_tag' && is_tag() ) )
+	$current_term = ( ( 'category' === $taxonomy && is_category() ) || ( 'post_tag' === $taxonomy && is_tag() ) )
 		&& $queried instanceof \WP_Term && $queried->taxonomy === $taxonomy ? (int) $queried->term_id : 0;
 	$current_post = is_singular( 'post' ) && is_public_post( $queried ) ? (int) $queried->ID : 0;
 	$open         = array();
@@ -527,7 +553,8 @@ function render_taxonomy( $taxonomy, $args = array() ) {
 			$id          = $data['parents'][ $id ]; }
 	}
 	// Prepare only initially open direct lists, using one union query for all paths.
-	$wanted = $open_terms = array();
+	$wanted     = array();
+	$open_terms = array();
 	if ( $args['show_posts'] ) {
 		foreach ( $open as $id => $unused ) {
 			if ( empty( $data['memberships'][ $id ] ) ) {
@@ -549,8 +576,8 @@ function render_taxonomy( $taxonomy, $args = array() ) {
 	}
 	wp_enqueue_style( 'content-trees' );
 	wp_enqueue_script( 'content-trees-taxonomy' );
-	$label     = $args['title'] !== '' ? $args['title'] : taxonomy_title( $taxonomy );
-	$messages  = $taxonomy === 'category'
+	$label     = '' !== $args['title'] ? $args['title'] : taxonomy_title( $taxonomy );
+	$messages  = 'category' === $taxonomy
 		? array(
 			'expanded'  => __( 'All category branches expanded.', 'content-trees' ),
 			'collapsed' => __( 'All category branches collapsed.', 'content-trees' ),
@@ -560,12 +587,12 @@ function render_taxonomy( $taxonomy, $args = array() ) {
 			'collapsed' => __( 'All tag branches collapsed.', 'content-trees' ),
 		);
 	$messages += array(
-		'loading'      => __( 'Loading posts…', 'content-trees' ),
+		'loading'      => __( 'Loading postsâ€¦', 'content-trees' ),
 		'loaded'       => __( 'Posts loaded.', 'content-trees' ),
 		'empty'        => __( 'No posts in this term.', 'content-trees' ),
 		'error'        => __( 'Posts could not be loaded. Try again or visit the term archive.', 'content-trees' ),
 		'retry'        => __( 'Try again', 'content-trees' ),
-		'bulkLoading'  => __( 'Loading tree posts…', 'content-trees' ),
+		'bulkLoading'  => __( 'Loading tree postsâ€¦', 'content-trees' ),
 		'bulkComplete' => __( 'Tree loading finished.', 'content-trees' ),
 		'bulkError'    => __( 'Tree loading finished. Some branches could not be loaded. Use Try again in those branches.', 'content-trees' ),
 	);
@@ -584,7 +611,7 @@ function render_taxonomy( $taxonomy, $args = array() ) {
 	}
 	if ( $args['show_controls'] && $has_branches ) {
 		$html .= '<div class="ctrees-controls" role="group" aria-label="' . esc_attr(
-			$taxonomy === 'category'
+			'category' === $taxonomy
 			? __( 'Category controls', 'content-trees' ) : __( 'Tag controls', 'content-trees' )
 		) . '" hidden>'
 			. '<button type="button" data-ctrees-action="open">' . esc_html__( 'Open All', 'content-trees' ) . '</button><span aria-hidden="true"> | </span>'
@@ -595,14 +622,20 @@ function render_taxonomy( $taxonomy, $args = array() ) {
 	} else {
 		$filtered = $args['root'] || $args['excluded_terms'] || $args['excluded_posts'];
 		$html    .= '<p>' . esc_html(
-			$filtered ? __( 'No terms match these settings.', 'content-trees' ) : ( $taxonomy === 'category'
+			$filtered ? __( 'No terms match these settings.', 'content-trees' ) : ( 'category' === $taxonomy
 			? __( 'No categories with published posts yet.', 'content-trees' ) : __( 'No tags with published posts yet.', 'content-trees' ) )
 		) . '</p>';
 	}
 	return $html . '</nav>';
 }
 
-/** Focused entry points share only these fixed-taxonomy adapters. */
+/**
+ * Focused entry points share only these fixed-taxonomy adapters.
+ *
+ * @param string $taxonomy Built-in taxonomy name.
+ * @param string $name Provider name.
+ * @param string $widget Widget class name.
+ */
 function register_taxonomy_tree( $taxonomy, $name, $widget ) {
 	add_action(
 		'init',
@@ -629,19 +662,12 @@ function register_taxonomy_tree( $taxonomy, $name, $widget ) {
 			register_widget( $widget );
 		}
 	);
-	add_filter(
-		'widget_types_to_hide_from_legacy_widget_block',
-		static function ( $types ) use ( $name ) {
-			$types[] = 'ctrees_' . $name;
-			return $types;
-		}
-	);
 }
 
 add_action(
 	'init',
 	static function () {
-		wp_register_script( 'content-trees-taxonomy', plugins_url( 'taxonomy.js', __FILE__ ), array( 'content-trees-post-loader' ), VERSION, true );
+		wp_register_script( 'content-trees-taxonomy', plugins_url( 'taxonomy.js', __FILE__ ), array( 'content-trees-tree' ), VERSION, true );
 		wp_register_script(
 			'content-trees-taxonomy-editor',
 			plugins_url( 'taxonomy-editor.js', __FILE__ ),
@@ -655,32 +681,5 @@ add_action(
 
 register_taxonomy_tree( 'category', 'categories', __NAMESPACE__ . '\\Categories_Widget' );
 register_taxonomy_tree( 'post_tag', 'tags', __NAMESPACE__ . '\\Tags_Widget' );
-
-// Classic/block widgets can render after wp_head, as do existing providers.
-add_action(
-	'wp_enqueue_scripts',
-	static function () {
-		global $wp_query;
-		foreach ( array( 'categories', 'tags' ) as $name ) {
-			$has_tree = is_active_widget( false, false, 'ctrees_' . $name, true );
-			foreach ( $wp_query->posts ?? array() as $post ) {
-				if ( $post instanceof \WP_Post && ( has_shortcode( $post->post_content, 'content_trees_' . $name )
-				|| has_block( 'content-trees/' . $name, $post ) ) ) {
-					$has_tree = true;
-					break; }
-			}
-			foreach ( get_option( 'widget_block', array() ) as $number => $widget ) {
-				if ( isset( $widget['content'] ) && has_block( 'content-trees/' . $name, $widget['content'] )
-				&& is_active_widget( false, 'block-' . $number, 'block', true ) ) {
-					$has_tree = true;
-					break; }
-			}
-			if ( $has_tree ) {
-				wp_enqueue_style( 'content-trees' );
-				wp_enqueue_script( 'content-trees-taxonomy' );
-				return; }
-		}
-	}
-);
 
 require_once __DIR__ . '/class-taxonomy-widget.php';

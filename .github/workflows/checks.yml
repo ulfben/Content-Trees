@@ -1,0 +1,122 @@
+name: Checks
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Coding standards and syntax
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: shivammathur/setup-php@d52fc211a0436f8839a587b3b5b8efddab4744ea # v2
+        with:
+          php-version: '8.3'
+          tools: composer:v2
+          coverage: none
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '22'
+          cache: npm
+      - run: composer install --no-interaction --prefer-dist
+      - run: npm ci --ignore-scripts
+      - run: composer lint
+      - run: composer phpcs
+      - run: npm run lint
+      - run: npm run format:check
+
+  regression:
+    name: WordPress ${{ matrix.wordpress }} / PHP ${{ matrix.php }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - wordpress: '6.3'
+            php: '7.4'
+          - wordpress: latest
+            php: '8.5'
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: content-trees-ci
+          MARIADB_DATABASE: content_trees_test
+        ports:
+          - 33080:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: shivammathur/setup-php@d52fc211a0436f8839a587b3b5b8efddab4744ea # v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: mysqli, pdo_mysql, dom, mbstring
+          tools: composer:v2, wp-cli
+          coverage: none
+      - name: Set disposable installation path
+        run: echo "CONTENT_TREES_TEST_WP_ROOT=$RUNNER_TEMP/content-trees-wordpress" >> "$GITHUB_ENV"
+      - name: Install disposable WordPress
+        env:
+          WP_VERSION: ${{ matrix.wordpress }}
+        run: |
+          wp core download --path="$CONTENT_TREES_TEST_WP_ROOT" --version="$WP_VERSION"
+          wp config create --path="$CONTENT_TREES_TEST_WP_ROOT" --dbname=content_trees_test --dbuser=root --dbpass=content-trees-ci --dbhost=127.0.0.1:33080
+          wp config set CONTENT_TREES_DISPOSABLE_TEST_SITE true --raw --path="$CONTENT_TREES_TEST_WP_ROOT"
+          wp config set DISABLE_WP_CRON true --raw --path="$CONTENT_TREES_TEST_WP_ROOT"
+          wp core install --path="$CONTENT_TREES_TEST_WP_ROOT" --url=http://127.0.0.1:8770 --title='Content Trees tests' --admin_user=fixture-admin --admin_password=ci-only-password --admin_email=test@example.invalid --skip-email
+          ln -s "$GITHUB_WORKSPACE" "$CONTENT_TREES_TEST_WP_ROOT/wp-content/plugins/content-trees"
+          wp plugin activate content-trees --path="$CONTENT_TREES_TEST_WP_ROOT"
+      - name: Run integration regressions sequentially
+        run: composer test:integration
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        if: matrix.wordpress == 'latest'
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install browser test dependencies
+        if: matrix.wordpress == 'latest'
+        run: |
+          npm ci --ignore-scripts
+          npx playwright install --with-deps chromium
+      - name: Run browser regressions
+        if: matrix.wordpress == 'latest'
+        run: npm run test:browser
+
+  plugin-check:
+    name: Plugin Check on installable files
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: shivammathur/setup-php@d52fc211a0436f8839a587b3b5b8efddab4744ea # v2
+        with:
+          php-version: '8.3'
+          coverage: none
+      - name: Prepare installable files
+        run: php tools/build-plugin.php
+      - uses: WordPress/plugin-check-action@10857da14b6c2246d15402b3e69f777edcf8c12e # v1
+        with:
+          build-dir: dist/content-trees
+          include-experimental: false
+          repo-token: ''

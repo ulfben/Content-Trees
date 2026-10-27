@@ -1,0 +1,17 @@
+{
+  "name": "content-trees",
+  "private": true,
+  "scripts": {
+    "lint": "eslint .",
+    "format": "prettier --write \"*.js\" \"*.css\" \"{block,pages}/*.js\" \"{block,pages,categories,tags}/*.json\" \"tests/browser/*.mjs\"",
+    "format:check": "prettier --check \"*.js\" \"*.css\" \"{block,pages}/*.js\" \"{block,pages,categories,tags}/*.json\" \"tests/browser/*.mjs\"",
+    "test:browser": "node tests/browser/check-taxonomy-baseline-browser.mjs && node tests/browser/check-taxonomy-controls-browser.mjs && node tests/browser/check-taxonomy-loading-browser.mjs && node tests/browser/check-pages-browser.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.13.0",
+    "globals": "^16.5.0",
+    "playwright": "^1.56.1",
+    "prettier": "^3.6.2"
+  }
+}

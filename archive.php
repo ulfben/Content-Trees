@@ -12,69 +12,105 @@ defined( 'ABSPATH' ) || exit;
 add_action(
 	'init',
 	static function () {
-		wp_register_script( 'content-trees', plugins_url( 'archive.js', __FILE__ ), array( 'content-trees-post-loader' ), VERSION, true );
+		wp_register_script( 'content-trees', plugins_url( 'archive.js', __FILE__ ), array( 'content-trees-tree' ), VERSION, true );
 		register_block_type( __DIR__ . '/block', array( 'render_callback' => __NAMESPACE__ . '\\render_archive_block' ) );
 	}
 );
 
+/**
+ * Enqueue the Archive frontend assets.
+ */
 function enqueue_assets() {
 	wp_enqueue_style( 'content-trees' );
 	wp_enqueue_script( 'content-trees' );
 }
 
-// Widget output follows wp_head. Enqueue beforehand so theme styles load correctly.
-add_action(
-	'wp_enqueue_scripts',
-	static function () {
-		global $wp_query;
-		if ( is_active_widget( false, false, 'ctrees_archive', true ) ) {
-			enqueue_assets();
-			return;
-		}
-		// Listing pages may render a shortcode in any queried post, not just the first.
-		foreach ( $wp_query->posts ?? array() as $post ) {
-			if ( $post instanceof \WP_Post && ( has_shortcode( $post->post_content, 'content_trees_archive' ) || has_block( 'content-trees/archive', $post ) ) ) {
-				enqueue_assets();
-				return;
-			}
-		}
-		// Block widgets render after the head, just like classic widgets.
-		$settings = get_option( 'widget_block', array() );
-		foreach ( $settings as $number => $widget ) {
-			if ( isset( $widget['content'] )
-			&& has_block( 'content-trees/archive', $widget['content'] )
-			&& is_active_widget( false, 'block-' . $number, 'block', true ) ) {
-				enqueue_assets();
-				return;
-			}
+/**
+ * Normalize the archive date order.
+ *
+ * @param mixed $value Value to normalize.
+ */
+function archive_order( $value ) {
+	return 'ASC' === $value ? 'ASC' : 'DESC';
+}
+
+/**
+ * Normalize Archive options for every entry point.
+ *
+ * @param array $args Tree options or theme widget wrappers.
+ */
+function archive_options( $args = array() ) {
+	$defaults      = array(
+		'title'              => __( 'Archives', 'content-trees' ),
+		'open_to'            => 0,
+		'show_title'         => true,
+		'show_counts'        => true,
+		'show_archive_links' => true,
+		'show_controls'      => false,
+		'auto_open'          => true,
+		'show_posts'         => true,
+		'group_years'        => true,
+		'close_siblings'     => false,
+		'order'              => 'DESC',
+		'excluded_posts'     => array(),
+	);
+	$args          = array_intersect_key( wp_parse_args( $args, $defaults ), $defaults );
+	$args['title'] = is_string( $args['title'] ) ? sanitize_text_field( $args['title'] ) : $defaults['title'];
+	foreach ( array( 'show_title', 'show_counts', 'show_archive_links', 'show_controls', 'auto_open', 'show_posts', 'group_years', 'close_siblings' ) as $flag ) {
+		$args[ $flag ] = enabled( $args[ $flag ] );
+	}
+	$args['show_title']     = $args['show_title'] && '' !== $args['title'];
+	$args['excluded_posts'] = exclusion_ids( $args['excluded_posts'] );
+	$args['open_to']        = exclusion_ids( array( $args['open_to'] ) )[0] ?? 0;
+	$args['order']          = archive_order( $args['order'] );
+	if ( ! $args['show_posts'] ) {
+		$args['show_archive_links'] = true;
+	}
+	return $args;
+}
+
+/**
+ * Adapt saved block attributes to Archive options.
+ *
+ * @param array $attributes Saved block attributes.
+ */
+function render_archive_block( $attributes ) {
+	$map  = array(
+		'title'            => 'title',
+		'showCounts'       => 'show_counts',
+		'showArchiveLinks' => 'show_archive_links',
+		'showControls'     => 'show_controls',
+		'autoOpen'         => 'auto_open',
+		'showPosts'        => 'show_posts',
+		'groupYears'       => 'group_years',
+		'closeSiblings'    => 'close_siblings',
+		'order'            => 'order',
+		'exclude'          => 'excluded_posts',
+	);
+	$args = array();
+	foreach ( $map as $attribute => $option ) {
+		if ( array_key_exists( $attribute, $attributes ) ) {
+			$args[ $option ] = $attributes[ $attribute ];
 		}
 	}
-);
-
-function archive_order( $value ) {
-	return $value === 'ASC' ? 'ASC' : 'DESC';
+	return render( $args );
 }
 
-function render_archive_block( $attributes ) {
-	$title = isset( $attributes['title'] ) ? sanitize_text_field( $attributes['title'] ) : __( 'Archives', 'content-trees' );
-	return render(
-		array(
-			'title'              => $title !== '' ? $title : __( 'Archives', 'content-trees' ),
-			'show_title'         => $title !== '',
-			'show_counts'        => $attributes['showCounts'] ?? true,
-			'show_archive_links' => $attributes['showArchiveLinks'] ?? true,
-			'show_controls'      => $attributes['showControls'] ?? false,
-			'auto_open'          => $attributes['autoOpen'] ?? true,
-			'show_posts'         => $attributes['showPosts'] ?? true,
-			'group_years'        => $attributes['groupYears'] ?? true,
-			'close_siblings'     => $attributes['closeSiblings'] ?? false,
-			'order'              => $attributes['order'] ?? 'DESC',
-			'excluded_posts'     => $attributes['exclude'] ?? array(),
-		)
-	);
+/**
+ * Apply shortcode defaults and its standard WordPress filter.
+ *
+ * @param array $attributes Saved block attributes.
+ */
+function render_archive_shortcode( $attributes ) {
+	return render( shortcode_atts( archive_options(), (array) $attributes, 'content_trees_archive' ) );
 }
 
-/** Reuse the single cached outline; subtract only excluded public posts, with no cache variants. */
+/**
+ * Reuse the single cached outline; subtract only excluded public posts, with no cache variants.
+ *
+ * @param int[]  $exclude Excluded public post IDs.
+ * @param string $order Sort direction.
+ */
 function filtered_outline( $exclude, $order ) {
 	$months = outline();
 	if ( $exclude ) {
@@ -109,7 +145,7 @@ function filtered_outline( $exclude, $order ) {
 			)
 		);
 	}
-	return $order === 'ASC' ? array_reverse( $months ) : $months;
+	return 'ASC' === $order ? array_reverse( $months ) : $months;
 }
 
 /** Cache plain date/count data, independently of the current visitor or page. */
@@ -139,7 +175,7 @@ function outline() {
 		static function ( $row ) {
 			return array_map( 'intval', $row );
 		},
-		$months ?: array()
+		$months ? $months : array()
 	);
 	set_transient( 'ctrees_month_index_v1', $months, 12 * HOUR_IN_SECONDS );
 	return $months;
@@ -158,7 +194,14 @@ add_action(
 	2
 );
 
-/** Fetch the complete public month, shared by the initial HTML and the REST route. */
+/**
+ * Fetch the complete public month, shared by the initial HTML and the REST route.
+ *
+ * @param int    $year Four-digit year.
+ * @param int    $month Month number, or zero for a year.
+ * @param string $order Sort direction.
+ * @param int[]  $exclude Excluded public post IDs.
+ */
 function month_posts( $year, $month, $order = 'DESC', $exclude = array() ) {
 	$order = archive_order( $order );
 	$query = new \WP_Query(
@@ -265,7 +308,7 @@ add_action(
 						'update_post_meta_cache' => false,
 						'update_post_term_cache' => false,
 					);
-					if ( $request['include'] !== '' ) {
+					if ( '' !== $request['include'] ) {
 						$args['post__in'] = exclusion_ids( $request['include'] );
 						if ( ! $args['post__in'] ) {
 							return rest_ensure_response( array( 'items' => array() ) ); }
@@ -282,12 +325,26 @@ add_action(
 	}
 );
 
+/**
+ * Render one escaped public post link.
+ *
+ * @param array $node Public link node.
+ * @param int   $current_id Current public item ID.
+ */
 function post_link( $node, $current_id ) {
 	return '<li><a data-post-id="' . esc_attr( $node['id'] ) . '" href="' . esc_url( $node['url'] ) . '"'
 		. ( $node['id'] === $current_id ? ' aria-current="page"' : '' ) . '>' . esc_html( $node['label'] ) . '</a></li>';
 }
 
-/** Output a date-name link; the native summary keeps its disclosure action. */
+/**
+ * Output a date-name link; the native summary keeps its disclosure action.
+ *
+ * @param int  $year Four-digit year.
+ * @param int  $month Month number, or zero for a year.
+ * @param int  $count Eligible post count.
+ * @param bool $full_date Whether to include the year.
+ * @param bool $filtered Whether tree exclusions affect the count.
+ */
 function archive_link( $year, $month, $count, $full_date = false, $filtered = false ) {
 	global $wp_locale;
 	$date = (string) $year;
@@ -306,7 +363,12 @@ function archive_link( $year, $month, $count, $full_date = false, $filtered = fa
 	<?php
 }
 
-/** Label the disclosure separately from the date link inside it. */
+/**
+ * Label the disclosure separately from the date link inside it.
+ *
+ * @param int $year Four-digit year.
+ * @param int $month Month number, or zero for a year.
+ */
 function disclosure_label( $year, $month = 0 ) {
 	global $wp_locale;
 	/* translators: 1: month name, 2: four-digit year. */
@@ -315,32 +377,14 @@ function disclosure_label( $year, $month = 0 ) {
 	return sprintf( __( 'Expand or collapse %s', 'content-trees' ), $date );
 }
 
-/** Explicit open_to IDs and the queried post use the same ancestry path. */
+/**
+ * Explicit open_to IDs and the queried post use the same ancestry path.
+ *
+ * @param array $args Tree options or theme widget wrappers.
+ */
 function render( $args = array() ) {
 	global $wp_locale;
-	$args = wp_parse_args(
-		$args,
-		array(
-			'title'              => __( 'Explore the archive', 'content-trees' ),
-			'open_to'            => 0,
-			'show_title'         => true,
-			'show_counts'        => true,
-			'show_archive_links' => true,
-			'show_controls'      => false,
-			'auto_open'          => true,
-			'show_posts'         => true,
-			'group_years'        => true,
-			'close_siblings'     => false,
-			'order'              => 'DESC',
-			'excluded_posts'     => array(),
-		)
-	);
-	foreach ( array( 'show_title', 'show_counts', 'show_archive_links', 'show_controls', 'auto_open', 'show_posts', 'group_years', 'close_siblings' ) as $flag ) {
-		$args[ $flag ] = enabled( $args[ $flag ] ); }
-	$args['excluded_posts'] = exclusion_ids( $args['excluded_posts'] );
-	$args['order']          = archive_order( $args['order'] );
-	if ( ! $args['show_posts'] ) {
-		$args['show_archive_links'] = true; }
+	$args    = archive_options( $args );
 	$current = is_singular( 'post' ) ? get_queried_object() : null;
 	if ( $current && in_array( $current->ID, $args['excluded_posts'], true ) ) {
 		$current = null; }
@@ -354,8 +398,8 @@ function render( $args = array() ) {
 	$target_month = $target ? substr( $target->post_date, 0, 7 ) : '';
 	// Plain archive permalinks use ?m=YYYYMM rather than year/monthnum query vars.
 	$archive_date  = (string) get_query_var( 'm' );
-	$archive_year  = (int) ( get_query_var( 'year' ) ?: substr( $archive_date, 0, 4 ) );
-	$archive_month = (int) ( get_query_var( 'monthnum' ) ?: substr( $archive_date, 4, 2 ) );
+	$archive_year  = (int) ( get_query_var( 'year' ) ? get_query_var( 'year' ) : substr( $archive_date, 0, 4 ) );
+	$archive_month = (int) ( get_query_var( 'monthnum' ) ? get_query_var( 'monthnum' ) : substr( $archive_date, 4, 2 ) );
 	$open_year     = $target ? (int) substr( $target_month, 0, 4 ) : ( $args['auto_open'] && is_date() ? $archive_year : 0 );
 	if ( ! $target && $args['auto_open'] && ( is_month() || is_day() ) ) {
 		$target_month = sprintf( '%04d-%02d', $open_year, $archive_month );
@@ -366,9 +410,9 @@ function render( $args = array() ) {
 	}
 	enqueue_assets();
 	$messages = array(
-		'loading'      => __( 'Loading posts…', 'content-trees' ),
+		'loading'      => __( 'Loading postsÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦', 'content-trees' ),
 		'loaded'       => __( 'Posts loaded.', 'content-trees' ),
-		'bulkLoading'  => __( 'Loading archive posts…', 'content-trees' ),
+		'bulkLoading'  => __( 'Loading archive postsÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦', 'content-trees' ),
 		'bulkComplete' => __( 'Archive loading finished.', 'content-trees' ),
 		'bulkError'    => __( 'Archive loading finished. Some months could not be loaded. Use Try again in those months.', 'content-trees' ),
 		'bulkOpened'   => __( 'Archive expanded.', 'content-trees' ),
@@ -379,7 +423,7 @@ function render( $args = array() ) {
 	);
 	ob_start();
 	?>
-	<nav class="ctrees" aria-label="<?php echo esc_attr( $args['title'] ); ?>" data-current-id="<?php echo esc_attr( $current_id ); ?>" data-endpoint="<?php echo esc_url( rest_url( 'content-trees/v1/months' ) ); ?>" data-order="<?php echo esc_attr( $args['order'] ); ?>" data-exclude="<?php echo esc_attr( implode( ',', $args['excluded_posts'] ) ); ?>" data-close-siblings="<?php echo $args['close_siblings'] ? '1' : '0'; ?>" data-messages="<?php echo esc_attr( wp_json_encode( $messages ) ); ?>">
+	<nav class="ctrees" aria-label="<?php echo esc_attr( '' !== $args['title'] ? $args['title'] : __( 'Archives', 'content-trees' ) ); ?>" data-current-id="<?php echo esc_attr( $current_id ); ?>" data-endpoint="<?php echo esc_url( rest_url( 'content-trees/v1/months' ) ); ?>" data-order="<?php echo esc_attr( $args['order'] ); ?>" data-exclude="<?php echo esc_attr( implode( ',', $args['excluded_posts'] ) ); ?>" data-close-siblings="<?php echo $args['close_siblings'] ? '1' : '0'; ?>" data-messages="<?php echo esc_attr( wp_json_encode( $messages ) ); ?>">
 		<?php
 		if ( $args['show_title'] ) :
 			?>
@@ -465,10 +509,10 @@ endif;
 	</nav>
 	<?php
 	// Only remove template whitespace between tags, never whitespace inside labels.
-	return trim( preg_replace( '/>\s+</', '><', ob_get_clean() ) );
+	return trim( ob_get_clean() );
 }
 
-add_shortcode( 'content_trees_archive', __NAMESPACE__ . '\\render' );
+add_shortcode( 'content_trees_archive', __NAMESPACE__ . '\\render_archive_shortcode' );
 
 require_once __DIR__ . '/class-archive-widget.php';
 add_action(

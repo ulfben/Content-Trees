@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<ruleset name="Content Trees">
+    <description>Full WordPress standards and PHP 7.4-8.5 compatibility.</description>
+    <arg name="extensions" value="php"/>
+    <arg name="basepath" value="."/>
+    <config name="testVersion" value="7.4-8.5"/>
+    <file>content-trees.php</file>
+    <file>tree.php</file>
+    <file>archive.php</file>
+    <file>pages.php</file>
+    <file>taxonomy.php</file>
+    <file>class-archive-widget.php</file>
+    <file>class-pages-widget.php</file>
+    <file>class-taxonomy-widget.php</file>
+    <file>class-categories-widget.php</file>
+    <file>class-tags-widget.php</file>
+    <file>block/editor.asset.php</file>
+    <file>pages/editor.asset.php</file>
+    <rule ref="WordPress"/>
+    <rule ref="PHPCompatibilityWP"/>
+    <rule ref="WordPress.WP.I18n">
+        <properties><property name="text_domain" type="array"><element value="content-trees"/></property></properties>
+    </rule>
+</ruleset>

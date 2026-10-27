@@ -14,3 +14,8 @@
 .DS_Store
 Thumbs.db
 *.log
+
+# Generated test artifacts
+/tests/results/
+/.phpcs-cache
+/.wp-env*.json

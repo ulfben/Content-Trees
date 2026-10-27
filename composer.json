@@ -1,0 +1,31 @@
+{
+    "name": "ulfben/content-trees",
+    "description": "Development checks for Content Trees",
+    "type": "project",
+    "license": "GPL-2.0-or-later",
+    "require-dev": {
+        "phpcompatibility/php-compatibility": "^10.0@dev",
+        "phpcompatibility/phpcompatibility-paragonie": "^2.0@dev",
+        "phpcompatibility/phpcompatibility-wp": "^3.0@dev",
+        "wp-coding-standards/wpcs": "^3.0"
+    },
+    "config": {
+        "allow-plugins": {
+            "dealerdirect/phpcodesniffer-composer-installer": true
+        },
+        "sort-packages": true
+    },
+    "scripts": {
+        "lint": "@php tests/lint.php",
+        "phpcs": "@php vendor/bin/phpcs --runtime-set ignore_warnings_on_exit 1",
+        "phpcbf": "@php vendor/bin/phpcbf",
+        "test:integration": [
+            "@php tests/integration/check-review-fixes.php",
+            "@php tests/integration/check-pages.php",
+            "@php tests/integration/check-taxonomy-loading.php",
+            "@php tests/integration/check-taxonomy-selectors.php",
+            "@php tests/integration/check-taxonomy-headings.php",
+            "@php tests/integration/check-consolidation.php"
+        ]
+    }
+}

@@ -1,9 +1,19 @@
 <?php
+/**
+ * Pages classic widget.
+ *
+ * @package ContentTrees
+ */
+
 namespace ContentTrees;
 
 defined( 'ABSPATH' ) || exit;
 
+/** Classic widget for the Pages tree. */
 class Pages_Widget extends \WP_Widget {
+	/**
+	 * Register the widget identity and description.
+	 */
 	public function __construct() {
 		parent::__construct(
 			'ctrees_pages',
@@ -14,6 +24,12 @@ class Pages_Widget extends \WP_Widget {
 		);
 	}
 
+	/**
+	 * Render the widget using theme wrappers.
+	 *
+	 * @param array $args Tree options or theme widget wrappers.
+	 * @param array $instance Saved widget settings.
+	 */
 	public function widget( $args, $instance ) {
 		$stored_title = $instance['title'] ?? __( 'Pages', 'content-trees' );
 		$title        = is_string( $stored_title ) ? sanitize_text_field( $stored_title ) : __( 'Pages', 'content-trees' );
@@ -21,7 +37,7 @@ class Pages_Widget extends \WP_Widget {
 		$title        = is_string( $title ) ? $title : '';
         // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Theme-owned markup from register_sidebar().
 		echo $args['before_widget'];
-		if ( $title !== '' ) {
+		if ( '' !== $title ) {
             // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Theme-owned title wrappers; filtered title is escaped separately.
 			echo $args['before_title'];
 			echo esc_html( $title );
@@ -33,7 +49,7 @@ class Pages_Widget extends \WP_Widget {
 			array_merge(
 				$instance,
 				array(
-					'title'      => $title !== '' ? $title : __( 'Pages', 'content-trees' ),
+					'title'      => '' !== $title ? $title : __( 'Pages', 'content-trees' ),
 					'show_title' => false,
 				)
 			)
@@ -42,6 +58,11 @@ class Pages_Widget extends \WP_Widget {
 		echo $args['after_widget'];
 	}
 
+	/**
+	 * Render the classic widget settings.
+	 *
+	 * @param array $instance Saved widget settings.
+	 */
 	public function form( $instance ) {
 		$instance  = pages_options( $instance );
 		$title     = $instance['title'];
@@ -59,9 +80,9 @@ class Pages_Widget extends \WP_Widget {
 			<option value="modified" <?php selected( $instance['sort_by'], 'modified' ); ?>><?php esc_html_e( 'Last updated', 'content-trees' ); ?></option>
 		</select></p>
 		<p><label for="<?php echo esc_attr( $this->get_field_id( 'order' ) ); ?>"><?php esc_html_e( 'Order', 'content-trees' ); ?></label>
-		<select class="ctrees-page-order" id="<?php echo esc_attr( $this->get_field_id( 'order' ) ); ?>" name="<?php echo esc_attr( $this->get_field_name( 'order' ) ); ?>" data-asc="<?php esc_attr_e( 'Ascending', 'content-trees' ); ?>" data-desc="<?php esc_attr_e( 'Descending', 'content-trees' ); ?>" data-title-asc="<?php esc_attr_e( 'A–Z', 'content-trees' ); ?>" data-title-desc="<?php esc_attr_e( 'Z–A', 'content-trees' ); ?>" data-date-asc="<?php esc_attr_e( 'Oldest first', 'content-trees' ); ?>" data-date-desc="<?php esc_attr_e( 'Newest first', 'content-trees' ); ?>">
-			<option value="ASC" <?php selected( $instance['order'], 'ASC' ); ?>><?php echo esc_html( $instance['sort_by'] === 'title' ? __( 'A–Z', 'content-trees' ) : ( $date_sort ? __( 'Oldest first', 'content-trees' ) : __( 'Ascending', 'content-trees' ) ) ); ?></option>
-			<option value="DESC" <?php selected( $instance['order'], 'DESC' ); ?>><?php echo esc_html( $instance['sort_by'] === 'title' ? __( 'Z–A', 'content-trees' ) : ( $date_sort ? __( 'Newest first', 'content-trees' ) : __( 'Descending', 'content-trees' ) ) ); ?></option>
+		<select class="ctrees-page-order" id="<?php echo esc_attr( $this->get_field_id( 'order' ) ); ?>" name="<?php echo esc_attr( $this->get_field_name( 'order' ) ); ?>" data-asc="<?php esc_attr_e( 'Ascending', 'content-trees' ); ?>" data-desc="<?php esc_attr_e( 'Descending', 'content-trees' ); ?>" data-title-asc="<?php esc_attr_e( 'AÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“Z', 'content-trees' ); ?>" data-title-desc="<?php esc_attr_e( 'ZÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“A', 'content-trees' ); ?>" data-date-asc="<?php esc_attr_e( 'Oldest first', 'content-trees' ); ?>" data-date-desc="<?php esc_attr_e( 'Newest first', 'content-trees' ); ?>">
+			<option value="ASC" <?php selected( $instance['order'], 'ASC' ); ?>><?php echo esc_html( 'title' === $instance['sort_by'] ? __( 'AÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“Z', 'content-trees' ) : ( $date_sort ? __( 'Oldest first', 'content-trees' ) : __( 'Ascending', 'content-trees' ) ) ); ?></option>
+			<option value="DESC" <?php selected( $instance['order'], 'DESC' ); ?>><?php echo esc_html( 'title' === $instance['sort_by'] ? __( 'ZÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“A', 'content-trees' ) : ( $date_sort ? __( 'Newest first', 'content-trees' ) : __( 'Descending', 'content-trees' ) ) ); ?></option>
 		</select></p>
 		<p><input type="checkbox" id="<?php echo esc_attr( $this->get_field_id( 'show_controls' ) ); ?>" name="<?php echo esc_attr( $this->get_field_name( 'show_controls' ) ); ?>" value="1" <?php checked( $instance['show_controls'] ); ?>>
 		<label for="<?php echo esc_attr( $this->get_field_id( 'show_controls' ) ); ?>"><?php esc_html_e( 'Show Open All / Close All', 'content-trees' ); ?></label></p>
@@ -77,6 +98,12 @@ class Pages_Widget extends \WP_Widget {
 		<?php
 	}
 
+	/**
+	 * Normalize saved widget settings.
+	 *
+	 * @param array $new_instance Submitted widget settings.
+	 * @param array $old_instance Previous widget settings.
+	 */
 	public function update( $new_instance, $old_instance ) {
 		$instance = pages_options(
 			array_merge(
@@ -94,7 +121,13 @@ class Pages_Widget extends \WP_Widget {
 		return array_intersect_key( $instance, array_flip( array( 'title', 'root', 'sort_by', 'order', 'auto_open', 'excluded_pages', 'show_controls', 'close_siblings' ) ) );
 	}
 
-	/** Render the shared searchable selector with page-specific labels. */
+	/**
+	 * Render the shared searchable selector with page-specific labels.
+	 *
+	 * @param string $field Setting name.
+	 * @param int[]  $ids Selected IDs.
+	 * @param bool   $single Whether only one selection is allowed.
+	 */
 	private function page_selector( $field, $ids, $single = false ) {
 		$remove = $single ? __( 'Clear start page', 'content-trees' ) : __( 'Remove page', 'content-trees' );
 		?>

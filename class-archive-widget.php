@@ -1,10 +1,19 @@
 <?php
+/**
+ * Archive classic widget.
+ *
+ * @package ContentTrees
+ */
+
 namespace ContentTrees;
 
 defined( 'ABSPATH' ) || exit;
 
 /** New widget ID deliberately coexists with the published plugin's widgets. */
 class Archive_Widget extends \WP_Widget {
+	/**
+	 * Register the widget identity and description.
+	 */
 	public function __construct() {
 		parent::__construct(
 			'ctrees_archive',
@@ -15,40 +24,41 @@ class Archive_Widget extends \WP_Widget {
 		);
 	}
 
+	/**
+	 * Render the widget using theme wrappers.
+	 *
+	 * @param array $args Tree options or theme widget wrappers.
+	 * @param array $instance Saved widget settings.
+	 */
 	public function widget( $args, $instance ) {
-		$title = isset( $instance['title'] ) ? $instance['title'] : __( 'Archives', 'content-trees' );
-		$title = apply_filters( 'widget_title', $title, $instance, $this->id_base );
+		$options = archive_options( $instance );
+		$title   = $options['title'];
+		$title   = apply_filters( 'widget_title', $title, $instance, $this->id_base );
         // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Theme-owned HTML from register_sidebar()/dynamic_sidebar(); not a saved widget field.
 		echo $args['before_widget'];
-		if ( $title !== '' ) {
+		if ( '' !== $title ) {
             // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Theme-owned opening title markup; the filtered title is escaped separately below.
 			echo $args['before_title'];
 			echo esc_html( $title );
             // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Theme-owned closing title markup from the registered sidebar.
 			echo $args['after_title'];
 		}
-        // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- render() returns HTML with text, attributes, JSON attributes and URLs escaped at construction.
-		echo render(
-			array(
-				'title'              => $title ?: __( 'Archives', 'content-trees' ),
-				'show_title'         => false,
-				'show_counts'        => $instance['show_counts'] ?? true,
-				'show_archive_links' => $instance['show_archive_links'] ?? true,
-				'show_controls'      => $instance['show_controls'] ?? false,
-				'auto_open'          => $instance['auto_open'] ?? true,
-				'show_posts'         => $instance['show_posts'] ?? true,
-				'group_years'        => $instance['group_years'] ?? true,
-				'close_siblings'     => $instance['close_siblings'] ?? false,
-				'order'              => $instance['order'] ?? 'DESC',
-				'excluded_posts'     => $instance['excluded_posts'] ?? array(),
-			)
-		);
+		$options['title']      = $title;
+		$options['show_title'] = false;
+		// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- render() escapes text, attributes and URLs while constructing its HTML.
+		echo render( $options );
         // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Theme-owned closing widget markup from the registered sidebar.
 		echo $args['after_widget'];
 	}
 
+	/**
+	 * Render the classic widget settings.
+	 *
+	 * @param array $instance Saved widget settings.
+	 */
 	public function form( $instance ) {
-		$title = isset( $instance['title'] ) ? $instance['title'] : __( 'Archives', 'content-trees' );
+		$options = archive_options( $instance );
+		$title   = $options['title'];
 		?>
 		<p><label for="<?php echo esc_attr( $this->get_field_id( 'title' ) ); ?>"><?php esc_html_e( 'Title:', 'content-trees' ); ?></label>
 		<input class="widefat" id="<?php echo esc_attr( $this->get_field_id( 'title' ) ); ?>" name="<?php echo esc_attr( $this->get_field_name( 'title' ) ); ?>" type="text" value="<?php echo esc_attr( $title ); ?>"></p>
@@ -102,6 +112,12 @@ class Archive_Widget extends \WP_Widget {
 		<?php
 	}
 
+	/**
+	 * Normalize saved widget settings.
+	 *
+	 * @param array $new_instance Submitted widget settings.
+	 * @param array $old_instance Previous widget settings.
+	 */
 	public function update( $new_instance, $old_instance ) {
 		return array(
 			'title'              => sanitize_text_field( $new_instance['title'] ?? '' ),

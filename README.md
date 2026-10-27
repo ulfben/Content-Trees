@@ -5,7 +5,7 @@
 - **Requires at least:** 6.3
 - **Tested up to:** 7.1
 - **Requires PHP:** 7.4
-- **Stable tag:** 0.9.8
+- **Stable tag:** 0.9.9
 - **License:** GPL-2.0-or-later
 - **License URI:** https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -63,6 +63,11 @@ Category counts include unique public posts in that category and its visible chi
 2. An archive tree on a sample blog, expanded to the current post with its title highlighted.
 
 ## Changelog
+
+### 0.9.9
+
+* Make Archive headings behave consistently across blocks, widgets and shortcodes.
+* Keep branch controls and post loading consistent across tree types.
 
 ### 0.9.8
 

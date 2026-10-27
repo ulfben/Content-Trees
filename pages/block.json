@@ -1,26 +1,30 @@
 {
-    "$schema": "https://schemas.wp.org/trunk/block.json",
-    "apiVersion": 3,
-    "name": "content-trees/pages",
-    "version": "0.9.8",
-    "title": "Content Trees: Pages",
-    "category": "widgets",
-    "icon": "admin-page",
-    "description": "A compact tree of published pages.",
-    "keywords": ["pages", "tree", "navigation"],
-    "textdomain": "content-trees",
-    "attributes": {
-        "title": { "type": "string" },
-        "root": { "type": "integer", "minimum": 0, "default": 0 },
-        "exclude": { "type": "array", "items": { "type": "integer" }, "default": [] },
-        "sortBy": { "type": "string", "enum": ["menu_order", "title", "date", "modified"], "default": "menu_order" },
-        "order": { "type": "string", "enum": ["ASC", "DESC"], "default": "ASC" },
-        "autoOpen": { "type": "boolean", "default": true },
-        "showControls": { "type": "boolean", "default": false },
-        "closeSiblings": { "type": "boolean", "default": false }
-    },
-    "supports": { "html": false, "customClassName": false },
-    "editorScript": "file:./editor.js",
-    "viewScript": "content-trees-pages",
-    "style": "content-trees"
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "content-trees/pages",
+	"version": "0.9.9",
+	"title": "Content Trees: Pages",
+	"category": "widgets",
+	"icon": "admin-page",
+	"description": "A compact tree of published pages.",
+	"keywords": ["pages", "tree", "navigation"],
+	"textdomain": "content-trees",
+	"attributes": {
+		"title": { "type": "string" },
+		"root": { "type": "integer", "minimum": 0, "default": 0 },
+		"exclude": { "type": "array", "items": { "type": "integer" }, "default": [] },
+		"sortBy": {
+			"type": "string",
+			"enum": ["menu_order", "title", "date", "modified"],
+			"default": "menu_order"
+		},
+		"order": { "type": "string", "enum": ["ASC", "DESC"], "default": "ASC" },
+		"autoOpen": { "type": "boolean", "default": true },
+		"showControls": { "type": "boolean", "default": false },
+		"closeSiblings": { "type": "boolean", "default": false }
+	},
+	"supports": { "html": false, "customClassName": false },
+	"editorScript": "file:./editor.js",
+	"viewScript": "content-trees-pages",
+	"style": "content-trees"
 }
