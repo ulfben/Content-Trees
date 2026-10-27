@@ -50,7 +50,7 @@ $options   = array( 'widget_ctrees_archive', 'widget_ctrees_pages', 'widget_ctre
 $before    = array();
 foreach ( $options as $name ) {
 	$before[ $name ] = get_option( $name, '__missing_review_option__' ); }
-$baseline = ContentTrees\outline();
+$original_outline = ContentTrees\outline();
 register_post_type( 'ctrees_review', array( 'public' => false ) );
 try {
 	wp_set_current_user( 1 );
@@ -70,6 +70,12 @@ try {
 		$ids[] = $id;
 		return $id;
 	};
+	// Supply more than one month even on a fresh or empty installation.
+	foreach ( array( '1990-01-03 12:00:00', '1991-01-03 12:00:00' ) as $date ) {
+		$id = $insert( 'post' );
+		wp_update_post( array( 'ID' => $id, 'post_date' => $date, 'post_date_gmt' => $date ) );
+	}
+	$baseline = ContentTrees\outline();
 	foreach ( array( 'page', 'ctrees_review' ) as $type ) {
 		$id = $insert( $type );
 		review_check( get_transient( 'ctrees_month_index_v1' ) === $baseline, "$type creation preserves the warmed archive index." );
@@ -187,5 +193,5 @@ try {
 $after = array();
 foreach ( $options as $name ) {
 	$after[ $name ] = get_option( $name, '__missing_review_option__' ); }
-review_check( $before === $after && ContentTrees\outline() === $baseline, 'Saved widgets, theme, locale and baseline archive content remain unchanged.' );
+review_check( $before === $after && ContentTrees\outline() === $original_outline, 'Saved widgets, theme, locale and baseline archive content remain unchanged.' );
 echo "$checks review checks passed on $profile.\n";
