@@ -4,7 +4,7 @@ Tags: archives, pages, navigation, widget, block
 Requires at least: 6.3
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 0.9.10
+Stable tag: 0.10.0
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -16,7 +16,7 @@ Content Trees makes your site's content easier to explore through compact, colla
 
 Content Trees is the modern successor to WP-dTree, rebuilt using native browser features and WordPress APIs. It replaces the aging dTree library with lightweight JavaScript, loads post titles as you open archive, category and tag branches, and offers a live preview in the block editor. Built with accessibility in mind, it supports keyboard navigation, touch-friendly controls, and screen-reader announcements.
 
-Version 0.9 includes all four basic tree types: archives, pages, categories and tags.
+Content Trees includes all four basic tree types: archives, pages, categories and tags.
 
 = Available now =
 
@@ -56,12 +56,20 @@ Yes. Use `[content_trees_archive]`, `[content_trees_pages]`, `[content_trees_cat
 
 Category counts include unique public posts in that category and its visible child categories. Tag counts include posts assigned directly to that tag. A post can appear under more than one assigned term, but is counted only once in a category total. Exclusions affect this tree and its counts; linked archive pages keep their ordinary contents.
 
+= Does the count cache work with Redis? =
+
+The count cache is bypassed when a persistent object cache is active. Redis configurations have not yet been tested.
+
 == Screenshots ==
 
 1. Configure the archive tree in the Widgets editor, with a live preview and controls for grouping, ordering, counts and branch behaviour.
 2. An archive tree on a sample blog, expanded to the current post with its title highlighted.
 
 == Changelog ==
+
+= 0.10.0 =
+
+* Cache taxonomy tree post counts on large sites to make repeated page loads faster.
 
 = 0.9.10 =
 
