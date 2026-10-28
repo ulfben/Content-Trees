@@ -386,7 +386,7 @@ add_action( 'clean_post_cache', __NAMESPACE__ . '\\taxonomy_cache_type_updated',
  */
 function taxonomy_count_cache_safe( $taxonomy, $args ) {
 	global $wpdb, $wp_filter;
-	if ( wp_using_ext_object_cache() || is_user_logged_in() || get_class( $wpdb ) !== 'wpdb' || $args['open_to']
+	if ( wp_using_ext_object_cache() || is_user_logged_in() || get_class( $wpdb ) !== 'wpdb' || is_file( WP_CONTENT_DIR . '/db.php' ) || $args['open_to']
 		|| ( $args['auto_open'] && ( is_singular( 'post' ) || ( 'category' === $taxonomy && is_category() ) || ( 'post_tag' === $taxonomy && is_tag() ) ) ) ) {
 		return false;
 	}
@@ -491,9 +491,16 @@ function taxonomy_count_cache_revision() {
  */
 function taxonomy_count_cache_lock( $taxonomy ) {
 	global $wpdb;
-	$name = 'ctrees-' . md5( DB_NAME . '|' . $wpdb->prefix . '|' . $taxonomy );
-	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Connection-scoped coordination cannot use the object cache.
-	return '1' === (string) $wpdb->get_var( $wpdb->prepare( 'SELECT GET_LOCK(%s, %d)', $name, 1 ) ) ? $name : '';
+	$name       = 'ctrees-' . md5( DB_NAME . '|' . $wpdb->prefix . '|' . $taxonomy );
+	$suppressed = $wpdb->suppress_errors( true );
+	try {
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Connection-scoped coordination cannot use the object cache.
+		return '1' === (string) $wpdb->get_var( $wpdb->prepare( 'SELECT GET_LOCK(%s, %d)', $name, 1 ) ) ? $name : '';
+	} catch ( \Throwable $error ) {
+		return '';
+	} finally {
+		$wpdb->suppress_errors( $suppressed );
+	}
 }
 
 /**
@@ -503,8 +510,16 @@ function taxonomy_count_cache_lock( $taxonomy ) {
  */
 function taxonomy_count_cache_unlock( $name ) {
 	global $wpdb;
-	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Release the connection-scoped lock even on failure.
-	$wpdb->get_var( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', $name ) );
+	$suppressed = $wpdb->suppress_errors( true );
+	try {
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Release the connection-scoped lock even on failure.
+		$wpdb->get_var( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', $name ) );
+	} catch ( \Throwable $error ) {
+		// The connection may have closed or the proxy may not support locks.
+		return;
+	} finally {
+		$wpdb->suppress_errors( $suppressed );
+	}
 }
 
 /**

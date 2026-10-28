@@ -105,6 +105,21 @@ try {
 			ContentTrees\render_taxonomy( 'category', array_merge( $category_args, array( 'title' => 'Cache variant ' . $i ) ) );
 		}
 		count_cache_check( 4 === count( get_transient( 'ctrees_taxonomy_counts_category' )['entries'] ), 'Option variants are bounded to four snapshots per taxonomy' );
+		$writes = 0;
+		for ( $cycle = 0; $cycle < 2; ++$cycle ) {
+			for ( $i = 0; $i < 5; ++$i ) {
+				$variant = array_merge( $category_args, array( 'title' => 'Eviction variant ' . $i ) );
+				$noop = static function () {};
+				add_action( 'pre_get_posts', $noop );
+				try {
+					$expected = ContentTrees\render_taxonomy( 'category', $variant );
+				} finally {
+					remove_action( 'pre_get_posts', $noop );
+				}
+				count_cache_check( $expected === ContentTrees\render_taxonomy( 'category', $variant ), 'Five alternating category configurations preserve uncached output' );
+			}
+		}
+		count_cache_check( 10 === $writes && 4 === count( get_transient( 'ctrees_taxonomy_counts_category' )['entries'] ), 'Five configurations safely rebuild on each eviction' );
 	} finally {
 		remove_action( 'set_transient_ctrees_taxonomy_counts_category', $observe_writes );
 	}
@@ -125,6 +140,9 @@ try {
 		}
 		$fallback = ContentTrees\render_taxonomy( 'category', $category_args );
 		count_cache_check( $expected === $fallback && false === get_transient( 'ctrees_taxonomy_counts_category' ), 'Lock timeout returns uncached output without a competing write' );
+		$attempt_one = ContentTrees\taxonomy_count_cache_lock( 'category' );
+		$attempt_two = ContentTrees\taxonomy_count_cache_lock( 'category' );
+		count_cache_check( '' === $attempt_one && '' === $attempt_two && preg_match( '/,\s*1\s*\)$/', $wpdb->last_query ), 'A continuously held lock limits every acquisition attempt to one second' );
 		$other_connection->query( "SELECT RELEASE_LOCK('" . $other_connection->real_escape_string( $lock_name ) . "')" );
 		$raise = static function () { throw new RuntimeException( 'Intentional cache write failure' ); };
 		add_action( 'set_transient_ctrees_taxonomy_counts_category', $raise );
@@ -143,6 +161,52 @@ try {
 		$other_connection->query( "SELECT RELEASE_LOCK('" . $other_connection->real_escape_string( $lock_name ) . "')" );
 	} finally {
 		$other_connection->close();
+	}
+	// A backend that rejects lock functions must fail silently and restore wpdb state.
+	$reject_lock = static function ( $sql ) {
+		return 0 === strpos( $sql, 'SELECT GET_LOCK(' ) || 0 === strpos( $sql, 'SELECT RELEASE_LOCK(' ) ? 'SELECT ctrees_missing_lock_function()' : $sql;
+	};
+	$old_show = $wpdb->show_errors( true );
+	$old_suppress = $wpdb->suppress_errors( false );
+	$old_error_log = ini_get( 'error_log' );
+	$old_log_errors = ini_get( 'log_errors' );
+	$error_log = dirname( __DIR__ ) . '/results/count-cache-lock-errors.log';
+	if ( file_exists( $error_log ) ) {
+		throw new RuntimeException( 'Refusing to overwrite a lock-test error log.' );
+	}
+	ini_set( 'error_log', $error_log );
+	ini_set( 'log_errors', '1' );
+	add_filter( 'query', $reject_lock, 0 );
+	ob_start();
+	try {
+		$failed_lock = ContentTrees\taxonomy_count_cache_lock( 'category' );
+		ContentTrees\taxonomy_count_cache_unlock( 'ctrees-test-invalid' );
+		$output = ob_get_contents();
+		count_cache_check( '' === $failed_lock && '' === $output && ! file_exists( $error_log ), 'Unsupported lock functions fail without output or error log' );
+		count_cache_check( false === $wpdb->suppress_errors && true === $wpdb->show_errors, 'Lock failure restores wpdb error settings' );
+	} finally {
+		ob_end_clean();
+		remove_filter( 'query', $reject_lock, 0 );
+		$wpdb->show_errors( $old_show );
+		$wpdb->suppress_errors( $old_suppress );
+		ini_set( 'error_log', $old_error_log );
+		ini_set( 'log_errors', $old_log_errors );
+	}
+	$dropin = WP_CONTENT_DIR . '/db.php';
+	if ( file_exists( $dropin ) ) {
+		throw new RuntimeException( 'Refusing to replace an existing database drop-in.' );
+	}
+	try {
+		if ( false === file_put_contents( $dropin, "<?php // Disposable guard fixture.\n" ) ) {
+			throw new RuntimeException( 'Could not create the temporary database drop-in marker.' );
+		}
+		clearstatcache( true, $dropin );
+		count_cache_check( ! ContentTrees\taxonomy_count_cache_safe( 'category', ContentTrees\taxonomy_options( 'category', $category_args ) ), 'A database drop-in bypasses snapshots even with the core wpdb class' );
+	} finally {
+		if ( file_exists( $dropin ) ) {
+			unlink( $dropin );
+		}
+		clearstatcache( true, $dropin );
 	}
 	count_cache_check( ! ContentTrees\taxonomy_count_cache_safe( 'category', ContentTrees\taxonomy_options( 'category', array_merge( $category_args, array( 'open_to' => $child ) ) ) ), 'Explicitly open branches bypass the count snapshot' );
 	count_cache_unchanged( 'draft save', static function () use ( $draft ) { wp_update_post( array( 'ID' => $draft, 'post_title' => 'Draft edit ' . wp_generate_uuid4() ) ); }, $category_args, $tag_args );

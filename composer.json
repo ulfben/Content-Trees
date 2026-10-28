@@ -30,7 +30,9 @@
             "@php tests/integration/check-taxonomy-headings.php",
             "@php tests/integration/check-consolidation.php",
             "@php tests/integration/check-interface-text.php",
-            "@php tests/integration/check-taxonomy-count-cache.php"
+            "@php tests/integration/check-taxonomy-count-cache.php",
+            "@php tests/integration/check-taxonomy-uninstall.php",
+            "@php tests/check-taxonomy-uninstall-multisite.php"
         ]
     }
 }
