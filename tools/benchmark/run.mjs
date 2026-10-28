@@ -6,14 +6,17 @@ import { execFileSync } from 'node:child_process';
 
 const base = process.argv[2];
 const cache = process.argv[3];
+const variant = process.argv[4] || 'cache';
+const selected = process.argv[5];
 if (!base || !['none', 'redis-cold', 'redis-warm'].includes(cache)) {
-	throw new Error('Usage: node tools/benchmark/run.mjs http://127.0.0.1:PORT none|redis-cold|redis-warm');
+	throw new Error('Usage: node tools/benchmark/run.mjs URL none|redis-cold|redis-warm [cache|cache-cold|baseline] [scenario,...]');
 }
+if (!['cache', 'cache-cold', 'baseline'].includes(variant)) throw new Error('Unknown implementation variant.');
 const url = new URL(base);
 if (url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || !url.port) {
 	throw new Error('The benchmark server must be on an explicit IPv4 loopback port.');
 }
-const scenarios = ['category-closed', 'tag-closed', 'both-closed', 'category-names', 'tag-names', 'both-names', 'category-open', 'tag-open', 'both-open', 'category-rest', 'tag-rest'];
+const scenarios = selected ? selected.split(',') : ['bare', 'category-closed', 'tag-closed', 'both-closed', 'category-nocount', 'tag-nocount', 'both-nocount', 'category-core', 'tag-core', 'category-names', 'tag-names', 'both-names', 'category-open', 'tag-open', 'both-open', 'category-rest', 'tag-rest'];
 const root = path.resolve('tests/results/benchmark');
 fs.mkdirSync(root, { recursive: true });
 const samples = [];
@@ -35,9 +38,17 @@ if (cache !== 'none') {
 	if (!/Status:\s*Connected\b/i.test(status)) throw new Error('Redis Object Cache did not report Connected.');
 	redisStatus = { guard, status };
 }
+if (variant === 'cache-cold' && (cache !== 'none' || !php || !process.env.CONTENT_TREES_TEST_WP_ROOT || !Array.isArray(phpArgs))) {
+	throw new Error('Cold transients require the no-object-cache mode and a guarded benchmark PHP environment.');
+}
+function clearTransient() {
+	const result = execFileSync(php, [...phpArgs, 'tools/benchmark/transient-control.php'], { encoding: 'utf8' });
+	if (result.trim() !== 'cleared') throw new Error('Could not clear benchmark transients.');
+}
 async function request(scenario, diagnostic = false) {
 	const target = new URL(base);
 	target.searchParams.set('scenario', scenario);
+	target.searchParams.set('variant', variant === 'cache-cold' ? 'cache' : variant);
 	if (diagnostic) target.searchParams.set('diagnostic', '1');
 	const start = performance.now();
 	const response = await fetch(target, { cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(120000) });
@@ -58,16 +69,18 @@ for (const scenario of scenarios) {
 	for (let i = 0; i < 5; i++) await request(scenario);
 	for (let i = 0; i < 50; i++) {
 		if (cache === 'redis-cold') cacheControl('flush');
+		if (variant === 'cache-cold') clearTransient();
 		samples.push(await request(scenario));
 	}
 	for (let i = 0; i < 3; i++) {
 		if (cache === 'redis-cold') cacheControl('flush');
+		if (variant === 'cache-cold') clearTransient();
 		diagnostics.push(await request(scenario, true));
 	}
 	const dataset = samples[0].dataset;
 	if (samples.some((sample) => sample.dataset !== dataset)) throw new Error('Dataset changed during measurement.');
-	output ||= path.join(root, `${dataset}-${cache}-${stamp}.json`);
-	fs.writeFileSync(output, JSON.stringify({ format: 1, cache, redis_status: redisStatus, warmups: 5, samples_per_scenario: 50, generated_at: new Date().toISOString(), samples, diagnostics }, null, 2) + '\n', 'utf8');
+	output ||= path.join(root, `${dataset}-${cache}-${variant}-${stamp}.json`);
+	fs.writeFileSync(output, JSON.stringify({ format: 1, cache, variant, redis_status: redisStatus, warmups: 5, samples_per_scenario: 50, generated_at: new Date().toISOString(), samples, diagnostics }, null, 2) + '\n', 'utf8');
 	console.log(`Measured ${scenario}`);
 }
 console.log(`Saved ${output}`);

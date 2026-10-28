@@ -1,0 +1,468 @@
+diff --git a/composer.json b/composer.json
+index 934f6ea..e512225 100644
+--- a/composer.json
++++ b/composer.json
+@@ -29,7 +29,8 @@
+             "@php tests/integration/check-taxonomy-selectors.php",
+             "@php tests/integration/check-taxonomy-headings.php",
+             "@php tests/integration/check-consolidation.php",
+-            "@php tests/integration/check-interface-text.php"
++            "@php tests/integration/check-interface-text.php",
++            "@php tests/integration/check-taxonomy-count-cache.php"
+         ]
+     }
+ }
+diff --git a/taxonomy.php b/taxonomy.php
+index 69581c4..f9bc210 100644
+--- a/taxonomy.php
++++ b/taxonomy.php
+@@ -176,15 +176,16 @@ function taxonomy_block_options( $taxonomy, $attributes ) {
+ 	return taxonomy_options( $taxonomy, $args );
+ }
+ 
+-// Preserve database name collation, with a stable ID tie for these queries only.
+-add_filter(
+-	'get_terms_orderby',
+-	static function ( $orderby, $args ) {
+-		return ! empty( $args['ctrees_name_order'] ) ? $orderby . ( 'DESC' === $args['ctrees_name_order'] ? ' DESC' : ' ASC' ) . ', t.term_id' : $orderby;
+-	},
+-	10,
+-	2
+-);
++/**
++ * Preserve database name collation and use a stable ID tie for these queries.
++ *
++ * @param string $orderby Existing order expression.
++ * @param array  $args Term query arguments.
++ */
++function taxonomy_name_orderby( $orderby, $args ) {
++	return ! empty( $args['ctrees_name_order'] ) ? $orderby . ( 'DESC' === $args['ctrees_name_order'] ? ' DESC' : ' ASC' ) . ', t.term_id' : $orderby;
++}
++add_filter( 'get_terms_orderby', __NAMESPACE__ . '\\taxonomy_name_orderby', 10, 2 );
+ 
+ /**
+  * Resolve original category ancestry without disclosing filtered parent names.
+@@ -231,6 +232,119 @@ function taxonomy_parents( $taxonomy, $terms, $original = null, $root = 0 ) {
+ 	return $parents;
+ }
+ 
++/** Invalidate the two bounded count snapshots after content changes. */
++function taxonomy_invalidate_count_cache() {
++	update_option( 'ctrees_taxonomy_count_revision', wp_generate_uuid4(), false );
++	delete_transient( 'ctrees_taxonomy_counts_category' );
++	delete_transient( 'ctrees_taxonomy_counts_post_tag' );
++}
++foreach ( array( 'clean_post_cache', 'save_post', 'deleted_post', 'set_object_terms', 'created_term', 'edited_term', 'delete_term' ) as $ctrees_taxonomy_cache_hook ) {
++	add_action( $ctrees_taxonomy_cache_hook, __NAMESPACE__ . '\\taxonomy_invalidate_count_cache', 10, 0 );
++}
++unset( $ctrees_taxonomy_cache_hook );
++
++/**
++ * Use a count snapshot only when the normal query has no external hooks.
++ *
++ * @param string $taxonomy Built-in taxonomy name.
++ * @param array  $args Normalized tree options.
++ */
++function taxonomy_count_cache_safe( $taxonomy, $args ) {
++	global $wpdb, $wp_filter;
++	if ( wp_using_ext_object_cache() || is_user_logged_in() || get_class( $wpdb ) !== 'wpdb' || $args['open_to']
++		|| ( $args['auto_open'] && ( is_singular( 'post' ) || ( 'category' === $taxonomy && is_category() ) || ( 'post_tag' === $taxonomy && is_tag() ) ) ) ) {
++		return false;
++	}
++	$hooks     = array(
++		'all',
++		'parse_query',
++		'pre_get_posts',
++		'posts_pre_query',
++		'posts_where',
++		'posts_join',
++		'posts_where_paged',
++		'posts_groupby',
++		'posts_join_paged',
++		'posts_orderby',
++		'posts_distinct',
++		'post_limits',
++		'posts_fields',
++		'posts_clauses',
++		'posts_where_request',
++		'posts_groupby_request',
++		'posts_join_request',
++		'posts_orderby_request',
++		'posts_distinct_request',
++		'posts_fields_request',
++		'post_limits_request',
++		'posts_clauses_request',
++		'posts_request',
++		'query',
++		'pre_get_terms',
++		'get_terms_defaults',
++		'get_terms_args',
++		'list_terms_exclusions',
++		'get_terms_fields',
++		'terms_clauses',
++		'terms_pre_query',
++		'get_terms',
++		'get_terms_orderby',
++		'get_term',
++		'get_category',
++		'get_post_tag',
++		'get_term_metadata',
++		'term_link',
++		'wp_generate_uuid4',
++		'pre_option_ctrees_taxonomy_count_revision',
++		'option_ctrees_taxonomy_count_revision',
++		'default_option_ctrees_taxonomy_count_revision',
++	);
++	$transient = 'ctrees_taxonomy_counts_' . $taxonomy;
++	foreach ( array( 'pre_transient_', 'transient_', 'pre_set_transient_', 'expiration_of_transient_' ) as $prefix ) {
++		$hooks[] = $prefix . $transient;
++	}
++	foreach ( $hooks as $hook ) {
++		if ( empty( $wp_filter[ $hook ] ) ) {
++			continue;
++		}
++		foreach ( $wp_filter[ $hook ]->callbacks as $callbacks ) {
++			foreach ( $callbacks as $callback ) {
++				$function = $callback['function'];
++				if ( 'query' === $hook && is_array( $function ) && $function[0] === $wpdb && 'remove_placeholder_escape' === $function[1] ) {
++					continue;
++				}
++				if ( 'get_terms' === $hook && '_post_format_get_terms' === $function ) {
++					continue;
++				}
++				if ( 'get_term_metadata' === $hook && 'wp_check_term_meta_support_prefilter' === $function ) {
++					continue;
++				}
++				if ( 'get_term_metadata' === $hook && is_array( $function ) && $function[0] instanceof \WP_Metadata_Lazyloader && 'lazyload_meta_callback' === $function[1] ) {
++					continue;
++				}
++				if ( 'term_link' === $hook && '_post_format_link' === $function ) {
++					continue;
++				}
++				if ( 'get_terms_orderby' === $hook && __NAMESPACE__ . '\\taxonomy_name_orderby' === $function ) {
++					continue;
++				}
++				return false;
++			}
++		}
++	}
++	return true;
++}
++
++/** Stable across requests even without an external object cache. */
++function taxonomy_count_cache_revision() {
++	$revision = get_option( 'ctrees_taxonomy_count_revision', '' );
++	if ( ! $revision ) {
++		add_option( 'ctrees_taxonomy_count_revision', wp_generate_uuid4(), '', false );
++		$revision = get_option( 'ctrees_taxonomy_count_revision', '' );
++	}
++	return $revision;
++}
++
+ /**
+  * Fetch complete public posts, or only their IDs when building the outline.
+  *
+@@ -383,8 +497,9 @@ add_action(
+  *
+  * @param string $taxonomy Built-in taxonomy name.
+  * @param array  $args Tree options or theme widget wrappers.
++ * @param bool   $closed_outline Whether the caller needs only closed branches.
+  */
+-function taxonomy_data( $taxonomy, $args = array() ) {
++function taxonomy_data( $taxonomy, $args = array(), $closed_outline = false ) {
+ 	$data = array(
+ 		'terms'       => array(),
+ 		'parents'     => array(),
+@@ -438,13 +553,36 @@ function taxonomy_data( $taxonomy, $args = array() ) {
+ 	}
+ 	if ( ! $data['terms'] ) {
+ 		return $data; }
+-	$data['parents']   = taxonomy_parents( $taxonomy, $data['terms'], $original, $args['root'] );
+-	$needs_memberships = $args['show_posts'] || $args['show_counts'] || $args['hide_empty'] || 'count' === $args['sort_by'];
+-	$post_ids          = array();
+-	if ( $needs_memberships ) {
++	$data['parents']     = taxonomy_parents( $taxonomy, $data['terms'], $original, $args['root'] );
++	$needs_memberships   = $args['show_posts'] || $args['show_counts'] || $args['hide_empty'] || 'count' === $args['sort_by'];
++	$cache_safe          = $closed_outline && $needs_memberships && taxonomy_count_cache_safe( $taxonomy, $args );
++	$minimum_cache_posts = $cache_safe ? max( 0, (int) apply_filters( 'content_trees_taxonomy_cache_min_posts', 1000 ) ) : 0;
++	if ( $cache_safe && $minimum_cache_posts ) {
++		// Stored counts are only a cheap cache-worthiness hint, never displayed.
++		$possible_memberships = 0;
++		foreach ( $data['terms'] as $term ) {
++			$possible_memberships += max( 0, (int) $term['term']->count );
++			if ( $possible_memberships >= $minimum_cache_posts ) {
++				break;
++			}
++		}
++		if ( $possible_memberships < $minimum_cache_posts ) {
++			$cache_safe = false;
++		}
++	}
++	$cache_key = 'ctrees_taxonomy_counts_' . $taxonomy;
++	$revision  = $cache_safe ? taxonomy_count_cache_revision() : '';
++	$signature = $cache_safe ? md5( wp_json_encode( array( $taxonomy, $args, array_keys( $data['terms'] ), $data['parents'], $minimum_cache_posts ) ) ) : '';
++	$cached    = $cache_safe && $revision ? get_transient( $cache_key ) : false;
++	if ( ! is_array( $cached ) || ( $cached['revision'] ?? '' ) !== $revision || ( $cached['signature'] ?? '' ) !== $signature
++		|| ! isset( $cached['counts'], $cached['direct'] ) || ! is_array( $cached['counts'] ) || ! is_array( $cached['direct'] ) ) {
++		$cached = false;
++	}
++	$post_ids = array();
++	if ( $needs_memberships && ! $cached ) {
+ 		$query    = taxonomy_post_query( $taxonomy, array_keys( $data['terms'] ), $args, true );
+ 		$post_ids = array_values( array_diff( exclusion_ids( $query->posts ), $args['excluded_posts'] ) );
+-	} elseif ( $args['auto_open'] && is_singular( 'post' ) && is_public_post( get_queried_object() ) ) {
++	} elseif ( ! $needs_memberships && $args['auto_open'] && is_singular( 'post' ) && is_public_post( get_queried_object() ) ) {
+ 		$current = (int) get_queried_object_id();
+ 		if ( ! in_array( $current, $args['excluded_posts'], true ) ) {
+ 			$post_ids = array( $current ); }
+@@ -462,11 +600,40 @@ function taxonomy_data( $taxonomy, $args = array() ) {
+ 			}
+ 		}
+ 	}
++	$counts = array();
++	$direct = array();
++	if ( $cached ) {
++		$counts = $cached['counts'];
++		$direct = $cached['direct'];
++	} else {
++		foreach ( $data['terms'] as $id => $term ) {
++			$counts[ $id ] = count( $unique[ $id ] ?? array() );
++			$direct[ $id ] = count( $data['memberships'][ $id ] ?? array() );
++		}
++		if ( $cache_safe && $revision ) {
++			// The extra transient writes can cost more than this query on small sites.
++			if ( count( $post_ids ) >= $minimum_cache_posts ) {
++				set_transient(
++					$cache_key,
++					array(
++						'revision'  => $revision,
++						'signature' => $signature,
++						'counts'    => $counts,
++						'direct'    => $direct,
++					),
++					HOUR_IN_SECONDS
++				);
++			}
++		}
++	}
++	if ( $closed_outline ) {
++		$data['direct_counts'] = $direct;
++	}
+ 	foreach ( $data['terms'] as $id => $term ) {
+-		if ( $args['hide_empty'] && empty( $unique[ $id ] ) ) {
++		if ( $args['hide_empty'] && empty( $counts[ $id ] ) ) {
+ 			unset( $data['terms'][ $id ], $data['parents'][ $id ] );
+ 			continue; }
+-		$data['counts'][ $id ]                         = count( $unique[ $id ] ?? array() );
++		$data['counts'][ $id ]                         = $counts[ $id ];
+ 		$data['children'][ $data['parents'][ $id ] ][] = $id;
+ 	}
+ 	if ( 'count' === $args['sort_by'] ) {
+@@ -505,7 +672,7 @@ function render_taxonomy_items( $parent_id, $data, $current_term, $current_post,
+ 			$link .= '<span class="ctrees-count">(' . esc_html( number_format_i18n( $data['counts'][ $id ] ) ) . ')</span>'; }
+ 		$children  = render_taxonomy_items( $id, $data, $current_term, $current_post, $open, $args );
+ 		$post_list = '';
+-		$has_posts = $args['show_posts'] && ! empty( $data['memberships'][ $id ] );
++		$has_posts = $args['show_posts'] && ( ! empty( $data['memberships'][ $id ] ) || ! empty( $data['direct_counts'][ $id ] ) );
+ 		if ( $has_posts && isset( $open[ $id ] ) ) {
+ 			foreach ( $data['post_lists'][ $id ] ?? array() as $post_id ) {
+ 				if ( isset( $data['posts'][ $post_id ] ) ) {
+@@ -538,7 +705,7 @@ function render_taxonomy( $taxonomy, $args = array() ) {
+ 	if ( ! in_array( $taxonomy, array( 'category', 'post_tag' ), true ) ) {
+ 		return ''; }
+ 	$args         = taxonomy_options( $taxonomy, $args );
+-	$data         = taxonomy_data( $taxonomy, $args );
++	$data         = taxonomy_data( $taxonomy, $args, true );
+ 	$queried      = get_queried_object();
+ 	$current_term = ( ( 'category' === $taxonomy && is_category() ) || ( 'post_tag' === $taxonomy && is_tag() ) )
+ 		&& $queried instanceof \WP_Term && $queried->taxonomy === $taxonomy ? (int) $queried->term_id : 0;
+@@ -605,7 +772,7 @@ function render_taxonomy( $taxonomy, $args = array() ) {
+ 		$html .= '<h2>' . esc_html( $args['title'] ) . '</h2>'; }
+ 	$has_branches = false;
+ 	foreach ( $data['terms'] as $id => $term ) {
+-		if ( ! empty( $data['children'][ $id ] ) || ( $args['show_posts'] && ! empty( $data['memberships'][ $id ] ) ) ) {
++		if ( ! empty( $data['children'][ $id ] ) || ( $args['show_posts'] && ( ! empty( $data['memberships'][ $id ] ) || ! empty( $data['direct_counts'][ $id ] ) ) ) ) {
+ 			$has_branches = true;
+ 			break; }
+ 	}
+diff --git a/tests/integration/check-taxonomy-count-cache.php b/tests/integration/check-taxonomy-count-cache.php
+new file mode 100644
+index 0000000..d2d76f8
+--- /dev/null
++++ b/tests/integration/check-taxonomy-count-cache.php
+@@ -0,0 +1,175 @@
++<?php
++/** Count-cache parity, invalidation and context isolation on a disposable site. */
++require __DIR__ . '/bootstrap.php';
++if ( wp_using_ext_object_cache() ) {
++	throw new RuntimeException( 'These tests require the request-local object cache.' );
++}
++$revision_before = get_option( 'ctrees_taxonomy_count_revision', '__ctrees_missing__' );
++$saved_snapshots = array();
++foreach ( array( 'category', 'post_tag' ) as $taxonomy ) {
++	$key = 'ctrees_taxonomy_counts_' . $taxonomy;
++	$saved_snapshots[ $key ] = array( 'value' => get_transient( $key ), 'expires' => (int) get_option( '_transient_timeout_' . $key, 0 ) );
++}
++$terms = $posts = array();
++$user = 0;
++$checks = 0;
++$small_fixture_threshold = static function () { return 0; };
++add_filter( 'content_trees_taxonomy_cache_min_posts', $small_fixture_threshold );
++function count_cache_check( $condition, $message ) {
++	global $checks;
++	if ( ! $condition ) {
++		throw new RuntimeException( $message );
++	}
++	++$checks;
++	echo "PASS: $message\n";
++}
++function count_cache_compare( $taxonomy, $args ) {
++	$noop = static function () {};
++	add_action( 'pre_get_posts', $noop );
++	try {
++		$uncached = ContentTrees\render_taxonomy( $taxonomy, $args );
++	} finally {
++		remove_action( 'pre_get_posts', $noop );
++	}
++	$cold = ContentTrees\render_taxonomy( $taxonomy, $args );
++	$snapshot = get_transient( 'ctrees_taxonomy_counts_' . $taxonomy );
++	count_cache_check( is_array( $snapshot ) && isset( $snapshot['counts'], $snapshot['direct'] ), "$taxonomy count snapshot was created" );
++	$warm = ContentTrees\render_taxonomy( $taxonomy, $args );
++	count_cache_check( $uncached === $cold && $cold === $warm, "$taxonomy cold and warm HTML match the uncached output" );
++}
++function count_cache_mutate( $name, $callback, $category_args, $tag_args ) {
++	count_cache_compare( 'category', $category_args );
++	count_cache_compare( 'post_tag', $tag_args );
++	$revision = get_option( 'ctrees_taxonomy_count_revision' );
++	$callback();
++	count_cache_check( get_option( 'ctrees_taxonomy_count_revision' ) !== $revision, "$name changes the durable revision" );
++	count_cache_check( false === get_transient( 'ctrees_taxonomy_counts_category' ) && false === get_transient( 'ctrees_taxonomy_counts_post_tag' ), "$name removes both old snapshots" );
++	count_cache_compare( 'category', $category_args );
++	count_cache_compare( 'post_tag', $tag_args );
++}
++try {
++	foreach ( array( array( 'category', 'Cache root', 0 ), array( 'category', 'Cache child', 0 ), array( 'category', 'Cache other root', 0 ), array( 'post_tag', 'Cache tag', 0 ), array( 'post_tag', 'Cache other tag', 0 ) ) as $term ) {
++		$result = wp_insert_term( $term[1] . ' ' . wp_generate_uuid4(), $term[0], array( 'parent' => $term[2] ) );
++		if ( is_wp_error( $result ) ) {
++			throw new RuntimeException( $result->get_error_message() );
++		}
++		$terms[] = array( $term[0], (int) $result['term_id'] );
++	}
++	list( $root, $child, $other, $tag, $other_tag ) = array_column( $terms, 1 );
++	wp_update_term( $child, 'category', array( 'parent' => $root ) );
++	foreach ( array( 'publish', 'draft' ) as $status ) {
++		$id = wp_insert_post( array( 'post_title' => 'Count cache fixture ' . wp_generate_uuid4(), 'post_type' => 'post', 'post_status' => $status ), true );
++		if ( is_wp_error( $id ) ) {
++			throw new RuntimeException( $id->get_error_message() );
++		}
++		$posts[] = (int) $id;
++		wp_set_object_terms( $id, array( $child ), 'category' );
++		wp_set_object_terms( $id, array( $tag ), 'post_tag' );
++	}
++	list( $published, $draft ) = $posts;
++	$category_args = array( 'auto_open' => false, 'root' => $root, 'show_counts' => true, 'hide_empty' => true );
++	$tag_args = array( 'auto_open' => false, 'show_counts' => true, 'hide_empty' => true );
++	remove_filter( 'content_trees_taxonomy_cache_min_posts', $small_fixture_threshold );
++	ContentTrees\render_taxonomy( 'category', $category_args );
++	count_cache_check( false === get_transient( 'ctrees_taxonomy_counts_category' ), 'A small query does not create a count snapshot by default' );
++	add_filter( 'content_trees_taxonomy_cache_min_posts', $small_fixture_threshold );
++	count_cache_compare( 'category', array_merge( $category_args, array( 'excluded_posts' => array( $published ), 'sort_by' => 'count', 'order' => 'DESC' ) ) );
++	count_cache_compare( 'post_tag', array_merge( $tag_args, array( 'excluded_terms' => array( $other_tag ), 'excluded_posts' => array( $published ) ) ) );
++	count_cache_check( ! ContentTrees\taxonomy_count_cache_safe( 'category', ContentTrees\taxonomy_options( 'category', array_merge( $category_args, array( 'open_to' => $child ) ) ) ), 'Explicitly open branches bypass the count snapshot' );
++	count_cache_mutate( 'publication', static function () use ( $draft ) { wp_update_post( array( 'ID' => $draft, 'post_status' => 'publish' ) ); }, $category_args, $tag_args );
++	count_cache_mutate( 'status change', static function () use ( $draft ) { wp_update_post( array( 'ID' => $draft, 'post_status' => 'private' ) ); }, $category_args, $tag_args );
++	count_cache_mutate( 'password change', static function () use ( $published ) { wp_update_post( array( 'ID' => $published, 'post_password' => 'protected' ) ); }, $category_args, $tag_args );
++	count_cache_mutate( 'password removal', static function () use ( $published ) { wp_update_post( array( 'ID' => $published, 'post_password' => '' ) ); }, $category_args, $tag_args );
++	count_cache_mutate( 'post type change', static function () use ( $published ) { set_post_type( $published, 'page' ); }, $category_args, $tag_args );
++	count_cache_mutate( 'post type restoration', static function () use ( $published ) { set_post_type( $published, 'post' ); }, $category_args, $tag_args );
++	count_cache_mutate( 'term reassignment', static function () use ( $published, $other, $other_tag ) { wp_set_object_terms( $published, array( $other ), 'category' ); wp_set_object_terms( $published, array( $other_tag ), 'post_tag' ); }, $category_args, $tag_args );
++	count_cache_mutate( 'term edit', static function () use ( $tag ) { wp_update_term( $tag, 'post_tag', array( 'name' => 'Renamed cache tag ' . wp_generate_uuid4() ) ); }, $category_args, $tag_args );
++	count_cache_mutate( 'category reparenting', static function () use ( $child, $other ) { wp_update_term( $child, 'category', array( 'parent' => $other ) ); }, $category_args, $tag_args );
++	count_cache_mutate( 'term deletion', static function () use ( $tag ) { wp_delete_term( $tag, 'post_tag' ); }, $category_args, $tag_args );
++	count_cache_mutate( 'post deletion', static function () use ( $published ) { wp_delete_post( $published, true ); }, $category_args, $tag_args );
++	$posts = array( $draft );
++
++	// Warm the anonymous cache, then change the query context.
++	wp_update_post( array( 'ID' => $draft, 'post_status' => 'publish' ) );
++	wp_set_object_terms( $draft, array( $other ), 'category' );
++	$context_args = array( 'auto_open' => false, 'root' => $other, 'show_counts' => true, 'hide_empty' => true );
++	count_cache_compare( 'category', $context_args );
++	$visible = ContentTrees\render_taxonomy( 'category', $context_args );
++	global $wpdb;
++	$where = static function ( $sql ) use ( $wpdb, $draft ) { return $sql . $wpdb->prepare( " AND {$wpdb->posts}.ID <> %d", $draft ); };
++	add_filter( 'posts_where', $where );
++	try {
++		count_cache_check( ! ContentTrees\taxonomy_count_cache_safe( 'category', ContentTrees\taxonomy_options( 'category', $context_args ) ), 'SQL-filtered query bypasses the snapshot' );
++		$filtered = ContentTrees\render_taxonomy( 'category', $context_args );
++		count_cache_check( $filtered !== $visible, 'A warmed anonymous snapshot cannot override SQL-filtered visibility' );
++	} finally {
++		remove_filter( 'posts_where', $where );
++	}
++	$database_filter = static function ( $sql ) { return $sql; };
++	add_filter( 'query', $database_filter );
++	try {
++		count_cache_check( ! ContentTrees\taxonomy_count_cache_safe( 'category', ContentTrees\taxonomy_options( 'category', $context_args ) ), 'A database query filter bypasses the snapshot' );
++	} finally {
++		remove_filter( 'query', $database_filter );
++	}
++	$term_filter = static function ( $term_results ) { return $term_results; };
++	add_filter( 'get_terms', $term_filter );
++	try {
++		count_cache_check( ! ContentTrees\taxonomy_count_cache_safe( 'category', ContentTrees\taxonomy_options( 'category', $context_args ) ), 'A custom term filter bypasses the snapshot' );
++	} finally {
++		remove_filter( 'get_terms', $term_filter );
++	}
++	$pre = static function ( $result, $query ) { return 'ids' === $query->get( 'fields' ) && $query->get( 'tax_query' ) ? array() : $result; };
++	add_filter( 'posts_pre_query', $pre, 10, 2 );
++	try {
++		count_cache_check( ! ContentTrees\taxonomy_count_cache_safe( 'category', ContentTrees\taxonomy_options( 'category', $context_args ) ), 'posts_pre_query bypasses the snapshot' );
++		count_cache_check( ContentTrees\render_taxonomy( 'category', $context_args ) !== $visible, 'A short-circuited query retains its own results' );
++	} finally {
++		remove_filter( 'posts_pre_query', $pre, 10 );
++	}
++	wp_cache_flush();
++	$user = wp_insert_user( array( 'user_login' => 'ctrees-cache-' . wp_generate_uuid4(), 'user_pass' => wp_generate_password(), 'role' => 'subscriber' ) );
++	if ( is_wp_error( $user ) ) {
++		throw new RuntimeException( $user->get_error_message() );
++	}
++	wp_set_current_user( $user );
++	count_cache_check( ! ContentTrees\taxonomy_count_cache_safe( 'category', ContentTrees\taxonomy_options( 'category', $context_args ) ), 'Logged-in context bypasses the anonymous snapshot' );
++	$noop = static function () {};
++	add_action( 'pre_get_posts', $noop );
++	try {
++		$user_expected = ContentTrees\render_taxonomy( 'category', $context_args );
++	} finally {
++		remove_action( 'pre_get_posts', $noop );
++	}
++	count_cache_check( ContentTrees\render_taxonomy( 'category', $context_args ) === $user_expected, 'Logged-in context preserves its own uncached output' );
++	wp_set_current_user( 0 );
++	count_cache_check( get_option( '_transient_timeout_ctrees_taxonomy_counts_category' ) > time(), 'The database transient has an expiry' );
++} finally {
++	wp_set_current_user( 0 );
++	remove_filter( 'content_trees_taxonomy_cache_min_posts', $small_fixture_threshold );
++	foreach ( $posts as $id ) {
++		wp_delete_post( $id, true );
++	}
++	foreach ( array_reverse( $terms ) as $term ) {
++		if ( term_exists( $term[1], $term[0] ) ) {
++			wp_delete_term( $term[1], $term[0] );
++		}
++	}
++	if ( $user && ! is_wp_error( $user ) ) {
++		require_once ABSPATH . 'wp-admin/includes/user.php';
++		wp_delete_user( $user );
++	}
++	delete_transient( 'ctrees_taxonomy_counts_category' );
++	delete_transient( 'ctrees_taxonomy_counts_post_tag' );
++	if ( '__ctrees_missing__' === $revision_before ) {
++		delete_option( 'ctrees_taxonomy_count_revision' );
++	} else {
++		update_option( 'ctrees_taxonomy_count_revision', $revision_before, false );
++	}
++	foreach ( $saved_snapshots as $key => $saved ) {
++		if ( false !== $saved['value'] && $saved['expires'] > time() ) {
++			set_transient( $key, $saved['value'], $saved['expires'] - time() );
++		}
++	}
++}
++echo "PASS: $checks count-cache checks; temporary fixture removed and prior snapshots restored.\n";

@@ -1,0 +1,2 @@
+# Unified patches contain required leading spaces on context lines.
+tools/benchmark/*.patch -whitespace

@@ -36,10 +36,38 @@ if ( ! is_array( $dataset ) || empty( $dataset['complete'] ) ) {
 }
 wp_set_current_user( 0 );
 $scenario = $_GET['scenario'] ?? '';
-$valid = array( 'category-closed', 'tag-closed', 'both-closed', 'category-names', 'tag-names', 'both-names', 'category-open', 'tag-open', 'both-open', 'category-rest', 'tag-rest' );
+$valid = array( 'bare', 'category-closed', 'tag-closed', 'both-closed', 'category-nocount', 'tag-nocount', 'both-nocount', 'category-core', 'tag-core', 'category-names', 'tag-names', 'both-names', 'category-open', 'tag-open', 'both-open', 'category-rest', 'tag-rest' );
 if ( ! in_array( $scenario, $valid, true ) ) {
 	http_response_code( 400 );
 	exit( 'Unknown scenario.' );
+}
+$variant = $_GET['variant'] ?? 'cache';
+if ( ! in_array( $variant, array( 'cache', 'baseline', 'filtered', 'filtered-baseline', 'logged', 'logged-baseline' ), true ) ) {
+	http_response_code( 400 );
+	exit( 'Unknown variant.' );
+}
+if ( 'baseline' !== $variant && ! function_exists( 'ContentTrees\\taxonomy_count_cache_safe' ) ) {
+	throw new RuntimeException( 'Apply the count-cache prototype patch before measuring that variant.' );
+}
+if ( in_array( $variant, array( 'baseline', 'filtered-baseline', 'logged-baseline' ), true ) ) {
+	// A no-op query hook makes the prototype take its ordinary uncached path.
+	add_action( 'pre_get_posts', static function () {} );
+}
+if ( in_array( $variant, array( 'filtered', 'filtered-baseline' ), true ) ) {
+	$excluded_id = (int) $wpdb->get_var( $wpdb->prepare( "SELECT ID FROM {$wpdb->posts} WHERE post_type='post' AND post_status='publish' AND post_password='' AND post_name LIKE %s ORDER BY ID LIMIT 1", $wpdb->esc_like( 'ctbench-v1-post-' ) . '%' ) );
+	if ( ! $excluded_id ) {
+		throw new RuntimeException( 'Could not find the filtered-context post.' );
+	}
+	add_filter( 'posts_where', static function ( $where, $query ) use ( $wpdb, $excluded_id ) {
+		return 'ids' === $query->get( 'fields' ) && $query->get( 'tax_query' ) ? $where . $wpdb->prepare( " AND {$wpdb->posts}.ID <> %d", $excluded_id ) : $where;
+	}, 10, 2 );
+}
+if ( in_array( $variant, array( 'logged', 'logged-baseline' ), true ) ) {
+	$users = get_users( array( 'number' => 1, 'role' => 'administrator', 'fields' => 'ID' ) );
+	if ( ! $users ) {
+		throw new RuntimeException( 'The disposable benchmark site needs an administrator for this context test.' );
+	}
+	wp_set_current_user( (int) $users[0] );
 }
 $taxonomy = 0 === strpos( $scenario, 'tag-' ) ? 'post_tag' : 'category';
 $mode = substr( $scenario, strrpos( $scenario, '-' ) + 1 );
@@ -47,9 +75,27 @@ $options = array( 'auto_open' => false, 'show_posts' => true, 'show_counts' => t
 if ( 'names' === $mode ) {
 	$options['show_posts'] = $options['show_counts'] = $options['hide_empty'] = false;
 }
+if ( 'nocount' === $mode ) {
+	$options['show_counts'] = false;
+}
 $before_queries = $wpdb->num_queries;
 $started = microtime( true );
-if ( 'rest' === $mode ) {
+if ( 'bare' === $scenario ) {
+	$body = '';
+} elseif ( 'core' === $mode ) {
+	$terms = get_terms( array( 'taxonomy' => $taxonomy, 'hide_empty' => false, 'hierarchical' => false, 'number' => 0, 'update_term_meta_cache' => false ) );
+	if ( is_wp_error( $terms ) ) {
+		throw new RuntimeException( $terms->get_error_message() );
+	}
+	$body = '<ul>';
+	foreach ( $terms as $term ) {
+		$url = get_term_link( $term, $taxonomy );
+		if ( ! is_wp_error( $url ) ) {
+			$body .= '<li><a href="' . esc_url( $url ) . '">' . esc_html( $term->name ) . '</a> (' . (int) $term->count . ')</li>';
+		}
+	}
+	$body .= '</ul>';
+} elseif ( 'rest' === $mode ) {
 	$id = 'category' === $taxonomy ? $dataset['category_ids'][0] : $dataset['tag_ids'][0];
 	$route = '/content-trees/v1/terms/' . $taxonomy . '/' . $id . '/posts';
 	$callback_started = null;
@@ -84,8 +130,11 @@ if ( 'rest' === $mode ) {
 	}
 	header( 'Content-Type: text/html; charset=UTF-8' );
 }
-$elapsed = 'rest' === $mode ? $callback_elapsed : microtime( true ) - $started;
-$metrics = array( 'scenario' => $scenario, 'dataset' => $dataset['size'], 'plugin_seconds' => $elapsed, 'plugin_queries' => $wpdb->num_queries - $before_queries, 'queries' => $wpdb->num_queries, 'peak_bytes' => memory_get_peak_usage( true ), 'response_bytes' => strlen( $body ), 'external_object_cache' => (bool) wp_using_ext_object_cache() );
+$elapsed = 'bare' === $scenario ? 0 : ( 'rest' === $mode ? $callback_elapsed : microtime( true ) - $started );
+if ( 'rest' !== $mode ) {
+	$body = '<!doctype html><html><head><meta charset="utf-8"><title>Benchmark</title></head><body><main>' . $body . '</main></body></html>';
+}
+$metrics = array( 'scenario' => $scenario, 'variant' => $variant, 'dataset' => $dataset['size'], 'plugin_seconds' => $elapsed, 'plugin_queries' => $wpdb->num_queries - $before_queries, 'queries' => $wpdb->num_queries, 'peak_bytes' => memory_get_peak_usage( true ), 'response_bytes' => strlen( $body ), 'external_object_cache' => (bool) wp_using_ext_object_cache() );
 header( 'Cache-Control: no-store' );
 if ( $diagnostic ) {
 	$queries = array();
@@ -93,12 +142,18 @@ if ( $diagnostic ) {
 		$queries[] = array( 'sql' => $query[0], 'seconds' => $query[1], 'caller' => $query[2] );
 	}
 	$settings = array();
-	foreach ( 0 === strpos( $scenario, 'both-' ) ? array( 'category', 'post_tag' ) : array( $taxonomy ) as $tax ) {
+	foreach ( 'bare' === $scenario ? array() : ( 0 === strpos( $scenario, 'both-' ) ? array( 'category', 'post_tag' ) : array( $taxonomy ) ) as $tax ) {
 		$current_options = $options;
 		if ( 'open' === $mode ) {
 			$current_options['open_to'] = 'category' === $tax ? $dataset['category_ids'][0] : $dataset['tag_ids'][0];
 		}
-		$settings[ $tax ] = 'rest' === $mode ? array( 'sort_by' => 'date', 'order' => 'DESC', 'excluded_posts' => '', 'term_id' => $id ) : ContentTrees\taxonomy_options( $tax, $current_options );
+		if ( 'rest' === $mode ) {
+			$settings[ $tax ] = array( 'sort_by' => 'date', 'order' => 'DESC', 'excluded_posts' => '', 'term_id' => $id );
+		} elseif ( 'core' === $mode ) {
+			$settings[ $tax ] = array( 'taxonomy' => $tax, 'hide_empty' => false, 'hierarchical' => false, 'number' => 0, 'display' => 'flat list of stored direct counts' );
+		} else {
+			$settings[ $tax ] = ContentTrees\taxonomy_options( $tax, $current_options );
+		}
 	}
 	header( 'Content-Type: application/json; charset=UTF-8' );
 	echo wp_json_encode( array( 'metrics' => $metrics, 'settings' => $settings, 'queries' => $queries, 'environment' => array( 'wordpress' => $GLOBALS['wp_version'], 'plugin' => ContentTrees\VERSION, 'php' => PHP_VERSION, 'os' => PHP_OS_FAMILY, 'database' => $wpdb->db_version(), 'memory_limit' => ini_get( 'memory_limit' ), 'opcache_cli' => ini_get( 'opcache.enable_cli' ), 'object_cache_class' => get_class( $GLOBALS['wp_object_cache'] ) ) ) );

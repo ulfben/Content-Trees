@@ -26,10 +26,23 @@ $find_posts = static function () use ( $wpdb, $prefix ) {
 $find_terms = static function ( $taxonomy ) use ( $wpdb, $prefix ) {
 	return $wpdb->get_col( $wpdb->prepare( "SELECT t.term_id FROM {$wpdb->terms} t INNER JOIN {$wpdb->term_taxonomy} tt ON tt.term_id=t.term_id WHERE tt.taxonomy=%s AND t.slug LIKE %s", $taxonomy, $wpdb->esc_like( $prefix ) . '%' ) );
 };
+$suspend_snapshot_invalidation = static function () {
+	// Dataset changes run without concurrent requests. Remove only this
+	// experiment's snapshots and avoid thousands of redundant invalidations.
+	if ( function_exists( 'ContentTrees\\taxonomy_invalidate_count_cache' ) ) {
+		foreach ( array( 'clean_post_cache', 'save_post', 'deleted_post', 'set_object_terms', 'created_term', 'edited_term', 'delete_term' ) as $hook ) {
+			remove_action( $hook, 'ContentTrees\\taxonomy_invalidate_count_cache', 10 );
+		}
+	}
+	delete_transient( 'ctrees_taxonomy_counts_category' );
+	delete_transient( 'ctrees_taxonomy_counts_post_tag' );
+	delete_option( 'ctrees_taxonomy_count_revision' );
+};
 if ( 'remove' === $operation ) {
 	if ( ! is_array( $state ) || ( $state['prefix'] ?? '' ) !== $prefix ) {
 		throw new RuntimeException( 'No matching benchmark marker; refusing cleanup.' );
 	}
+	$suspend_snapshot_invalidation();
 	wp_defer_term_counting( true );
 	try {
 		$removed = 0;
@@ -70,6 +83,7 @@ $other_terms = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->term_taxonomy
 if ( $other_posts || $other_terms > 1 ) {
 	throw new RuntimeException( 'Use an otherwise empty installation with only the default category.' );
 }
+$suspend_snapshot_invalidation();
 $spec = 'large' === $size ? array( 20000, 300, 3000 ) : array( 500, 20, 100 );
 $state = array( 'prefix' => $prefix, 'size' => $size, 'seed' => 1729, 'complete' => false );
 if ( ! add_option( $marker, $state, '', false ) ) {
@@ -121,12 +135,9 @@ try {
 		}
 		$distribution['category_memberships'] += count( $cats );
 		$distribution['tag_memberships'] += count( $post_tags );
-		if ( 0 === ( $i + 1 ) % 1000 ) {
-			wp_defer_term_counting( false );
-			wp_defer_term_counting( true );
-			if ( ! wp_using_ext_object_cache() ) {
-				wp_cache_flush();
-			}
+		if ( 0 === ( $i + 1 ) % 1000 && ! wp_using_ext_object_cache() ) {
+			// Bound request-local memory while preserving one deferred recount.
+			wp_cache_flush();
 		}
 		if ( 0 === ( $i + 1 ) % 1000 ) {
 			fwrite( STDERR, ( $i + 1 ) . " posts created\n" );
