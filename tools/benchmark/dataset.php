@@ -30,8 +30,18 @@ $suspend_snapshot_invalidation = static function () {
 	// Dataset changes run without concurrent requests. Remove only this
 	// experiment's snapshots and avoid thousands of redundant invalidations.
 	if ( function_exists( 'ContentTrees\\taxonomy_invalidate_count_cache' ) ) {
-		foreach ( array( 'clean_post_cache', 'save_post', 'deleted_post', 'set_object_terms', 'created_term', 'edited_term', 'delete_term' ) as $hook ) {
-			remove_action( $hook, 'ContentTrees\\taxonomy_invalidate_count_cache', 10 );
+		foreach ( array(
+			array( 'post_updated', 'taxonomy_cache_post_updated', 10 ),
+			array( 'transition_post_status', 'taxonomy_cache_status_changed', 10 ),
+			array( 'deleted_post', 'taxonomy_cache_post_deleted', 10 ),
+			array( 'added_term_relationship', 'taxonomy_cache_relationship_changed', 0 ),
+			array( 'deleted_term_relationships', 'taxonomy_cache_relationship_changed', 0 ),
+			array( 'edited_term', 'taxonomy_cache_term_changed', 10 ),
+			array( 'delete_term', 'taxonomy_cache_term_changed', 10 ),
+			array( 'query', 'taxonomy_cache_observe_type_update', 1 ),
+			array( 'clean_post_cache', 'taxonomy_cache_type_updated', 0 ),
+		) as $hook ) {
+			remove_filter( $hook[0], 'ContentTrees\\' . $hook[1], $hook[2] );
 		}
 	}
 	delete_transient( 'ctrees_taxonomy_counts_category' );

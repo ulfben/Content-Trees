@@ -52,6 +52,8 @@ if ( 'baseline' !== $variant && ! function_exists( 'ContentTrees\\taxonomy_count
 if ( in_array( $variant, array( 'baseline', 'filtered-baseline', 'logged-baseline' ), true ) ) {
 	// A no-op query hook makes the prototype take its ordinary uncached path.
 	add_action( 'pre_get_posts', static function () {} );
+	// Baseline requests also omit the cache's global SQL observer.
+	remove_filter( 'query', 'ContentTrees\\taxonomy_cache_observe_type_update', 1 );
 }
 if ( in_array( $variant, array( 'filtered', 'filtered-baseline' ), true ) ) {
 	$excluded_id = (int) $wpdb->get_var( $wpdb->prepare( "SELECT ID FROM {$wpdb->posts} WHERE post_type='post' AND post_status='publish' AND post_password='' AND post_name LIKE %s ORDER BY ID LIMIT 1", $wpdb->esc_like( 'ctbench-v1-post-' ) . '%' ) );
