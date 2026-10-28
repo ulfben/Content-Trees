@@ -1,12 +1,14 @@
 # Taxonomy performance
 
-Measurements on 28 October 2026 started from Content Trees 0.9.10, commit `4d46d092a902939ab8945927a92025ae3db2832d`. The checkout had no uncommitted changes or newer commits. Benchmark tooling is commit `f708d8e` on `perf/taxonomy`; the plugin implementation is unchanged.
+Measurements on 28 October 2026 started from Content Trees 0.9.10, commit `4d46d092a902939ab8945927a92025ae3db2832d`. The checkout had no uncommitted changes or newer commits. Benchmark tooling is commit `f708d8e` on `perf/taxonomy`. A follow-up measured the count-cache prototype described below; it is preserved as a patch rather than applied to the plugin.
 
 ## Decision
 
-Do not add the proposed SQL rewrite or a Content Trees cache based on these measurements. On the large dataset without a persistent object cache, the ID query and membership query were a substantial part of closed-tree rendering. Nevertheless, replacing the ID list with that query as a subquery did not improve the database-level timings on MariaDB: it was approximately equal or slower for categories and consistently slower for tags. It passed the unfiltered row comparison, but this experiment is not a production implementation and does not establish filter compatibility. A persistent cache was unavailable for measurement. No conclusion is claimed about its performance.
+The database-backed count-cache prototype merits review for safely reusable closed outlines. The earlier conclusion that no cache was justified was premature: it had not tested the option relevant to sites without a persistent object cache. In the follow-up, the cache substantially reduced warm large-site rendering while preserving closed-tree HTML and bypassing contexts whose results could vary. It stores counts only, not titles, links or post lists. It does not accelerate open outlines, logged-in users, filtered queries or installations with an external object cache. The all-cold p95 comparison failed the stated no-material-regression criterion, and the small-site request-median allowance was borderline in one paired run. Consequently, the prototype is saved as [a reviewable patch](../tools/benchmark/count-cache-prototype.patch) and is not applied to production code. Its SHA-256 is `743370585771bfa7a431151ff7a5b8a967ea38b22cfb7da1489dcc02b55025c3`. A naming-only cleanup followed the timings. The patch is not a recommendation to merge or release it without deciding how to handle those trade-offs.
 
-Before the experiment, the acceptance threshold for a production change was a repeatable improvement of at least 15% and 10 ms in a meaningful large-site scenario, without a material p95 regression or a small-site median penalty exceeding the larger of 5% and 5 ms. Correct public results and the existing filter behavior are mandatory. The SQL probe found no database improvement and cannot demonstrate that threshold; a full production candidate and its HTTP comparison were not pursued. Its unmeasured PHP ID-list construction cost remains a limitation. No caching candidate was implemented or benchmarked; the available evidence does not justify its complexity. Revisit these decisions with a representative workload and real cache measurements if site requirements warrant it.
+Do not add the proposed SQL rewrite. On the large dataset without a persistent object cache, the ID query and membership query were a substantial part of closed-tree rendering. Nevertheless, replacing the ID list with that query as a subquery did not improve the database-level timings on MariaDB: it was approximately equal or slower for categories and consistently slower for tags. It passed the unfiltered row comparison, but this experiment is not a production implementation and does not establish filter compatibility. A persistent cache was unavailable for measurement. No conclusion is claimed about its performance.
+
+Before the experiment, the acceptance threshold for a production change was a repeatable improvement of at least 15% and 10 ms in a meaningful large-site scenario, without a material p95 regression or a small-site median penalty exceeding the larger of 5% and 5 ms. Correct public results and the existing filter behavior are mandatory. The SQL probe found no database improvement and cannot demonstrate that threshold; a full production candidate and its HTTP comparison were not pursued. Its unmeasured PHP ID-list construction cost remains a limitation. The warm count-cache comparison exceeds the large-site improvement threshold, but the worst-case cold p95 condition was not met; the small-site result is borderline, as reported below.
 
 ## Environment and method
 
@@ -60,9 +62,49 @@ The closed category diagnostics attributed 61–73 ms to the ID query and 69–8
 
 The individual run medians for both-open were 126.1 and 89.2 ms; tag REST medians were 75.0 and 64.6 ms. The cause of that variation was not isolated, so small differences in those scenarios should not be treated as reliable improvements. The small SQL probe below compares query execution only; no candidate HTTP overhead was measured.
 
+## Follow-up: count transients and alternatives
+
+The follow-up reused the same guarded WordPress/MariaDB environment and fixed-seed datasets. It measured a bare synthetic page and closed trees with the same wrapper, five warm-ups and 50 fresh HTTP requests per scenario. The baseline adds a no-op query hook, forcing the prototype's ordinary uncached path; this leaves query results unchanged. Warm runs retain the database transients across requests. For cold runs, a separate guarded PHP process removes only the two prototype transients immediately before each measured request, outside the timed interval. Each run has three separately logged diagnostic requests. The benchmark has no full-page cache or external object cache. Actual widget pages and their theme costs were not measured.
+
+### Large dataset: uncached, warm and cold
+
+| Scenario | Uncached HTTP median / p95 ms | Warm HTTP median / p95 ms | Cold HTTP median / p95 ms | Uncached / warm / cold render median ms |
+| --- | ---: | ---: | ---: | ---: |
+| Bare page | 30.7 / 43.4 | — | — | 0 / — / — |
+| Categories, closed | 172.5 / 183.9 | 46.6 / 52.7 | 185.7 / 201.7 | 136.5 / 7.6 / 145.8 |
+| Tags, closed | 282.1 / 305.8 | 89.9 / 112.9 | 299.0 / 316.2 | 241.7 / 48.5 / 255.2 |
+| Both, closed | 422.5 / 450.5 | 94.3 / 103.2 | 441.8 / 483.2 | 381.4 / 54.7 / 401.4 |
+
+The difference between the uncached and bare HTTP medians is approximately 142 ms for Categories, 251 ms for Tags and 392 ms for both. The separately timed render medians are in the table; differences of independently sampled medians are not an exact per-request delta. Warm render reductions are approximately 94%, 80% and 86% respectively and exceed the improvement threshold. Cold samples include cache writes: query counts were 17, 16 and 25 versus 13, 12 and 18 uncached. Warm counts were 12, 11 and 15; those counts include transient/revision reads even though the two expensive post/membership queries disappear.
+
+In an interleaved 50-pair run of both closed trees, uncached HTTP median/p95 were 422.8/448.9 ms and cold-cache median/p95 were 444.8/502.7 ms. Render medians were 384.7 and 405.3 ms. The approximately 54 ms all-cold p95 increase is material under the original criterion. It describes the first request after each cache clear, not an observed production mix of warm and cold requests; the p95 of a real workload with a given update rate was not measured. An earlier separate run showed cold faster than baseline, so host conditions also affect the precise difference.
+
+Baseline and warm Category and Tag HTTP response hashes matched in the final prototype; the earlier prototype also matched both-tree HTML byte for byte. Separate anonymous, SQL-filtered and logged-in HTTP requests also matched their corresponding uncached outputs, and filtered requests differed from the warmed anonymous result where the filter excluded a post. The filtered and logged-in requests performed the full membership query instead of reusing the snapshot.
+
+### Small dataset
+
+The first prototype also cached the 500-post dataset. Its initial render medians fell from 5.8 to 1.6 ms for Categories, 8.2 to 2.7 ms for Tags and 14.0 to 4.0 ms for both when warm. However, an interleaved 50-pair cold run showed both-tree render median increasing from 13.9 to 19.0 ms and HTTP p95 increasing from 58.0 to 133.6 ms. That did not satisfy the stated small-site criteria.
+
+The revised prototype does not write a snapshot unless the post query returns at least 1,000 eligible IDs. The built-in stored term counts are used only as an early hint to skip a cache lookup when their total is below that threshold; they are never used for the displayed results. If stored counts are inaccurate, this can lose an optimization opportunity but cannot alter the output. The `content_trees_taxonomy_cache_min_posts` filter controls the threshold. Different threshold values are part of the snapshot signature.
+
+| Scenario | Uncached HTTP median / p95 ms | Revised candidate HTTP median / p95 ms | Uncached / candidate render median ms | Snapshot written |
+| --- | ---: | ---: | ---: | --- |
+| Bare page | 30.7 / 40.9 | — | 0 / — | No |
+| Categories, closed | 45.5 / 53.1 | 46.7 / 50.6 | 5.7 / 5.6 | No |
+| Tags, closed | 46.7 / 51.4 | 46.7 / 53.6 | 8.2 / 8.6 | No |
+| Both, closed | 47.1 / 57.6 | 47.2 / 61.5 | 13.8 / 14.0 | No |
+
+In a separate interleaved 50-pair run of both closed trees, the uncached and revised-candidate render medians were 13.86 and 14.11 ms; HTTP medians were 46.54 and 51.77 ms, with p95 of 57.25 and 60.34 ms. The 5.23 ms HTTP median difference is just above the predeclared 5 ms small-site allowance, while the separate 50-request runs differed by 0.1 ms and render medians by 0.2 ms. This is a borderline result rather than an unqualified pass; the full samples are retained. The revised candidate made no small-dataset snapshots, so repeated requests remain uncached. The category term-count hint skipped the lookup; overlapping tag memberships exceeded the hint threshold and caused two additional lookup queries before the actual eligible-post count prevented a write. The large-site result is the reason to consider the change, and its deployment should account for this small-site uncertainty.
+
+### Hiding counts and core direct counts
+
+Turning off `show_counts` alone retains `show_posts=true` and `hide_empty=true`, so the tree still needs eligible memberships and subtree emptiness. In the final uncached large run, counts-on versus counts-off render medians were 136.5 versus 137.6 ms for Categories, 241.7 versus 238.7 ms for Tags, and 381.4 versus 380.0 ms for both. HTTP p95 values were respectively 183.9 versus 183.4, 305.8 versus 296.1, and 450.5 versus 449.2 ms. Counts-off reduced response size but did not meaningfully remove the query work. This is distinct from the names-only fast path, which also disables posts and empty-term filtering.
+
+A separate lightweight direct-count prototype read `WP_Term::count`, generated term links and a flat list. Large-dataset median work was 5.7 ms for Categories and 37.8 ms for Tags, with whole requests of 46.8 and 77.3 ms. This is not a full equivalent tree render. Its stored direct counts differed from the eligible direct counts on 211 of 301 categories and 705 of 3,000 tags. For example, a tag's stored count was 1,543 while its eligible count was 1,498: core's count includes published password-protected posts. A category root had a stored direct count of 2,670, an eligible direct count of 2,616 and a required unique subtree count of 19,200. On the small dataset, core counts differed from eligible direct counts on 10 of 21 categories and 22 of 100 tags; 12 category subtree counts differed. Core's stored counts therefore cannot replace these contracts without changing results. Removing Tags or making counts opt-in would also be a product behavior change; the counts-off measurement alone does not justify changing the default.
+
 ### Persistent object cache
 
-Redis cold and warm: **not measured**. There is no before/after HTTP table for an SQL or cache implementation because neither was retained. The tables above and below describe the unchanged baseline, not an inferred speedup.
+Redis cold and warm: **not measured**. The follow-up above tests WordPress's database-backed transients with no persistent object cache, not Redis. The earlier baseline tables and SQL probe describe the original implementation.
 
 ## SQL experiment and compatibility
 
@@ -83,7 +125,11 @@ Inspection of the installed WordPress 6.3 and 7.1.3 `WP_Query::get_posts()` impl
 
 Request-local reuse can avoid repeated identical work within one request, but provides no cross-request benefit and must account for mutable filters and context. WordPress's object-cache API can provide cross-request reuse only with a persistent backend; WordPress already caches eligible post-query results when its query is cacheable. That does not eliminate this plugin's membership processing, and no Redis comparison was available to quantify what remains.
 
-Database-backed transients can persist on sites without an external cache, but require durable invalidation on post publication, status/password changes, deletion, reassignment, term edits/deletion and reparenting, as well as an expiry and obsolete-entry cleanup strategy. A key containing SQL and the posts/terms `last_changed` values alone is unsuitable there: without a persistent object cache those values are regenerated between requests. Identical SQL also cannot prove that filter, user, locale or presentation contexts are interchangeable. A safely reusable data layer and its context would have to be established before adding any cache; no such invalidation or cross-context tests are claimed here.
+The database-backed prototype stores only per-term unique visible-subtree counts and direct membership counts. These are sufficient to render closed branches; the normal `taxonomy_data()` call and all open-branch rendering retain full memberships. The signature includes the taxonomy, normalized options, visible term IDs, parent map and cache threshold. The default threshold requires at least 1,000 eligible IDs before a snapshot is written; a sum of stored direct term counts can skip even the cache lookup when it is below the threshold. Those core counts are an optimization hint only. Two fixed transient names bound storage to one snapshot per taxonomy; a different option set replaces the previous snapshot, which limits growth but can cause misses when differently configured widgets alternate. Entries expire after one hour. A durable option revision and deletion of both snapshots invalidate them on post-cache cleaning, saves and deletion, term reassignment, creation, edits and deletion, including category reparenting. This adds writes on changes, even for some changes unrelated to taxonomy counts; it is not a free optimization. Database changes made outside WordPress APIs and their hooks cannot invalidate the snapshots.
+
+The snapshot is bypassed for logged-in users, external object caches, custom database implementations, explicitly open branches, and automatic opening on a relevant post or term. It also bypasses when relevant post-query, term-query, database-query or cache/revision filters are present, except for explicitly recognized core callbacks and this plugin's own ordering callback. That conservative policy can eliminate the benefit on sites with other plugins. A key containing only SQL and WordPress's posts/terms `last_changed` values would be unsuitable for database transients: without a persistent object cache those values are regenerated between requests. Identical SQL also cannot prove that filter, user, locale or presentation contexts are interchangeable.
+
+The prototype patch includes fixture tests for publication, status and password changes, post deletion and type changes, term reassignment, edits and deletion, category reparenting, expiry, SQL-filter and `posts_pre_query` bypass, logged-in isolation, exclusions, count ordering and open-branch fallback. They compare cached and uncached public HTML and restore their own temporary data and prior snapshots. Separate HTTP context checks repeat the anonymous/filter/user comparison across requests. The tests do not prove compatibility with every possible plugin, custom database or persistent cache; those contexts are deliberately excluded from reuse where detected.
 
 HTTP or CDN caching of REST responses is outside this change. Anonymous requests or `credentials: 'omit'` alone do not establish that responses are safe to share across users, filters or request contexts; cacheability would need its own context and invalidation analysis.
 
@@ -91,34 +137,47 @@ HTTP or CDN caching of REST responses is outside this change. Anonymous requests
 
 The starting checkout passed PHP syntax, encoding, metadata, bootstrap, JavaScript lint and formatting checks, and the WordPress/PHP coding-standard and compatibility scan. PHPCS reported no errors and one existing `tax_query` performance warning. The current WordPress 7.1.3/PHP 8.5.11 and minimum WordPress 6.3/PHP 7.4.33 integration suites passed, including the additional taxonomy baseline and feature checks. All five browser regression suites passed on the current fixture. Runtime Plugin Check reported no errors and three existing performance warnings: exclusionary query arguments in Archive and taxonomy selectors, and the taxonomy `tax_query` warning. Automated browser tests do not establish screen-reader compatibility. The test fixture's temporary Plugin Check object-cache drop-in was removed.
 
-The following PowerShell commands reproduce the measured run on this workspace's **separate benchmark installation** after its dataset is removed. The site was created with its own `ctbench_` table prefix and sample post removed, and has `CONTENT_TREES_DISPOSABLE_TEST_SITE` and `CONTENT_TREES_BENCHMARK_SITE` both set to `true`. It connects only to the guarded `content_trees_test` database at `127.0.0.1:33080` and activates this checkout. On another machine, first create an empty disposable WordPress installation with those markers and guards, and activate the exact checkout; do not use an existing populated site. See [benchmark setup](../tools/benchmark/README.md) for the requirements and Redis procedure.
+With the prototype applied, the same integration suites passed on both WordPress/PHP combinations, including 127 cache-specific checks in each, and all five browser suites passed on the current fixture. PHP syntax, metadata, bootstrap, encoding, JavaScript lint/format, Composer validation and PHPCS passed; PHPCS retained its one existing warning. Runtime Plugin Check reported zero errors and the same three existing warnings after a naming cleanup. The patch was then reversed and checked for clean application. No Redis or MySQL 8.0 verification is claimed.
+
+The following PowerShell commands reproduce the follow-up on this workspace's **separate benchmark installation** after its dataset is removed. Apply the prototype patch as shown before testing the cache, and reverse it after testing. The site was created with its own `ctbench_` table prefix and sample post removed, and has `CONTENT_TREES_DISPOSABLE_TEST_SITE` and `CONTENT_TREES_BENCHMARK_SITE` both set to `true`. It connects only to the guarded `content_trees_test` database at `127.0.0.1:33080` and activates this checkout. On another machine, first create an empty disposable WordPress installation with those markers and guards, and activate the exact checkout; do not use an existing populated site. See [benchmark setup](../tools/benchmark/README.md) for the requirements and Redis procedure. The earlier baseline tables were measured from `f708d8e` using the then-current unwrapped harness; use that revision to reproduce them exactly.
 
 ```powershell
 Set-Location 'D:\Temp\wordpress-plugins\repositories\content-trees'
+git apply --check tools/benchmark/count-cache-prototype.patch
+git apply tools/benchmark/count-cache-prototype.patch
 $env:CONTENT_TREES_TEST_WP_ROOT = 'D:\Temp\wordpress-plugins\repositories\content-trees\tests\results\benchmark\site'
 $php = 'D:\Temp\wordpress-plugins\tools\php\php.exe'
 $phpArgs = @('-d', 'memory_limit=512M', '-d', 'extension=mysqli', '-d', 'extension=pdo_mysql')
+$env:CONTENT_TREES_BENCHMARK_PHP = $php
+$env:CONTENT_TREES_BENCHMARK_PHP_ARGS = '["-d","memory_limit=512M","-d","extension=mysqli","-d","extension=pdo_mysql"]'
 & $php @phpArgs tools/benchmark/dataset.php create large | Set-Content tests/results/benchmark/large-dataset.json -Encoding utf8NoBOM
 & $php @phpArgs tools/benchmark/verify.php | Set-Content tests/results/benchmark/large-verify.json -Encoding utf8NoBOM
 & $php @phpArgs -S 127.0.0.1:8779 tools/benchmark/router.php
 # In a second PowerShell, from the same repository:
-node tools/benchmark/run.mjs http://127.0.0.1:8779/ none
+node tools/benchmark/run.mjs http://127.0.0.1:8779/ none baseline bare,category-closed,tag-closed,both-closed
+node tools/benchmark/run.mjs http://127.0.0.1:8779/ none cache category-closed,tag-closed,both-closed
+node tools/benchmark/run.mjs http://127.0.0.1:8779/ none cache-cold category-closed,tag-closed,both-closed
+node tools/benchmark/run.mjs http://127.0.0.1:8779/ none baseline category-nocount,tag-nocount,both-nocount,category-core,tag-core
+node tools/benchmark/context-check.mjs http://127.0.0.1:8779/
+& $php @phpArgs tools/benchmark/core-counts.php | Set-Content tests/results/benchmark/large-core-counts.json -Encoding utf8NoBOM
 # Substitute the actual output filename from that command:
-& $php @phpArgs tools/benchmark/sql-probe.php tests/results/benchmark/large-none-RESULT.json | Set-Content tests/results/benchmark/large-sql-probe.json -Encoding utf8NoBOM
-node tools/benchmark/summarize.mjs tests/results/benchmark/large-none-RESULT.json
+& $php @phpArgs tools/benchmark/sql-probe.php tests/results/benchmark/large-none-baseline-RESULT.json | Set-Content tests/results/benchmark/large-sql-probe.json -Encoding utf8NoBOM
+node tools/benchmark/summarize.mjs tests/results/benchmark/large-none-baseline-RESULT.json
 # Stop the server and remove only the marked data before switching sizes:
 & $php @phpArgs tools/benchmark/dataset.php remove
 & $php @phpArgs tools/benchmark/dataset.php create small | Set-Content tests/results/benchmark/small-dataset.json -Encoding utf8NoBOM
 & $php @phpArgs tools/benchmark/verify.php | Set-Content tests/results/benchmark/small-verify.json -Encoding utf8NoBOM
 ```
 
-Restart the server, run the Node command twice for the small dataset and run the SQL probe with one of those result filenames. To reproduce the pooled small table, substitute the two output files in the following commands:
+Restart the server and run the baseline and cache commands for the small dataset. For the interleaved small comparison, run `node tools/benchmark/paired-cold.mjs http://127.0.0.1:8779/ both-closed` with the benchmark PHP environment variables set. The historical pooled small table used two runs of the original `f708d8e` harness; to reproduce that summary, substitute the two original output files in the following commands:
 
 ```powershell
 node -e 'const fs=require("node:fs"); const a=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); const b=JSON.parse(fs.readFileSync(process.argv[2],"utf8")); a.samples.push(...b.samples); a.diagnostics.push(...b.diagnostics); a.samples_per_scenario+=b.samples_per_scenario; fs.writeFileSync(process.argv[3],JSON.stringify(a,null,2)+"\n","utf8");' tests/results/benchmark/small-none-FIRST.json tests/results/benchmark/small-none-SECOND.json tests/results/benchmark/small-combined-summary-input.json
 node tools/benchmark/summarize.mjs tests/results/benchmark/small-combined-summary-input.json
 ```
 
-Then stop the server and run `& $php @phpArgs tools/benchmark/dataset.php remove`. The actual file names and combined small-result input are retained under the ignored results directory. The sample commands assume the variables are also set in the second shell and are shown for this local environment; PHP, WordPress and database dependencies are not added to the repository.
+Then stop the server, run `& $php @phpArgs tools/benchmark/dataset.php remove` and reverse the prototype with `git apply -R tools/benchmark/count-cache-prototype.patch` if its files were not otherwise edited. The actual file names and combined small-result input are retained under the ignored results directory. The sample commands assume the variables are also set in the second shell and are shown for this local environment; PHP, WordPress and database dependencies are not added to the repository.
 
-Raw dataset manifests, verifier output, individual HTTP samples, SQL diagnostics and probe plans are UTF-8 JSON under ignored `tests/results/benchmark/`. They are local evidence and are not included in the plugin delivery allowlist or run as timing assertions in CI. The SQL probe requires the dataset used to generate its diagnostic input to remain installed. After these runs, the generated posts and terms were removed, the ownership marker was absent, and the benchmark HTTP and disposable database servers were stopped. The empty benchmark installation remains available for reproduction.
+Raw dataset manifests, verifier output, individual HTTP samples, SQL diagnostics and probe plans are UTF-8 JSON under ignored `tests/results/benchmark/`. The final large baseline, warm and cold files start with `large-none-baseline-2026-10-28T12-24`, `large-none-cache-2026-10-28T12-26` and `large-none-cache-cold-2026-10-28T12-26`; the interleaved cold comparison is `large-paired-cold-both-closed-2026-10-28T12-29-49-935Z.json`. The final small baseline and candidate files start with `small-none-baseline-2026-10-28T12-19` and `small-none-cache-2026-10-28T12-19`; the gated small paired run is `small-paired-cold-both-closed-2026-10-28T12-17-31-030Z.json`. The context check and core-count comparisons have descriptive filenames in the same directory.
+
+These are local evidence and are not included in the plugin delivery allowlist or run as timing assertions in CI. The SQL probe requires the dataset used to generate its diagnostic input to remain installed. After these runs, the generated posts and terms were removed, the ownership marker was absent, and the benchmark HTTP and disposable database servers were stopped. The empty benchmark installation remains available for reproduction.
