@@ -2,6 +2,8 @@
 
 The plugin runs directly from source. Node and Composer are only needed for development checks; there is no JavaScript build step.
 
+The `archive/` and `pages/` directories contain their blocks, renderers and widgets. `categories/` and `tags/` contain their block definitions and widgets; `taxonomy/` holds their shared implementation. Common tree behavior and assets live in `shared/`.
+
 Install PHP 7.4 or later with `mysqli`, `pdo_mysql`, DOM and mbstring, Composer 2, and Node 22.19 or later. Then run:
 
 ```sh

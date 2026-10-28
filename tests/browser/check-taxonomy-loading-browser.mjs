@@ -12,14 +12,19 @@ const dir = 'tests/results/';
 const markup = fs.readFileSync(dir + 'taxonomy-controls-render.html', 'utf8');
 const responses = JSON.parse(fs.readFileSync(dir + 'taxonomy-controls-posts.json', 'utf8'));
 const ids = JSON.parse(fs.readFileSync(dir + 'taxonomy-controls-ids.json', 'utf8'));
-const scripts = ['post-loader.js', 'tree.js', 'archive.js', 'taxonomy.js'].map((file) =>
-	fs.readFileSync('' + file, 'utf8'),
-);
+const scripts = [
+	'shared/post-loader.js',
+	'shared/tree.js',
+	'archive/archive.js',
+	'taxonomy/taxonomy.js',
+].map((file) => fs.readFileSync('' + file, 'utf8'));
 const errors = [];
 async function setup(mode, pretty = false) {
 	const page = await browser.newPage();
 	page.on('pageerror', (error) => errors.push(error.message));
-	await page.setContent('<style>' + fs.readFileSync('archive.css', 'utf8') + '</style>' + markup);
+	await page.setContent(
+		'<style>' + fs.readFileSync('shared/archive.css', 'utf8') + '</style>' + markup,
+	);
 	await page.evaluate(
 		({ responses, mode, ids, pretty }) => {
 			window.requests = [];
@@ -218,7 +223,7 @@ try {
 	const nojs = await browser.newContext({ javaScriptEnabled: false });
 	const fallback = await nojs.newPage();
 	await fallback.setContent(
-		'<style>' + fs.readFileSync('archive.css', 'utf8') + '</style>' + markup,
+		'<style>' + fs.readFileSync('shared/archive.css', 'utf8') + '</style>' + markup,
 	);
 	const branch = fallback
 		.locator(`.ctrees-taxonomy-tree details[data-term-id="${ids.a}"]`)

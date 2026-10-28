@@ -1019,7 +1019,7 @@ function register_taxonomy_tree( $taxonomy, $name, $widget ) {
 		'init',
 		static function () use ( $taxonomy, $name ) {
 			register_block_type(
-				__DIR__ . '/' . $name,
+				dirname( __DIR__ ) . '/' . $name,
 				array(
 					'render_callback' => static function ( $attributes ) use ( $taxonomy ) {
 							return render_taxonomy( $taxonomy, taxonomy_block_options( $taxonomy, $attributes ) );

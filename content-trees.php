@@ -17,18 +17,18 @@ defined( 'ABSPATH' ) || exit;
 
 const VERSION = '0.10.0';
 
-require_once __DIR__ . '/tree.php';
+require_once __DIR__ . '/shared/tree.php';
 
 /**
  * Register shared frontend and editor assets.
  */
 function register_assets() {
-	wp_register_style( 'content-trees', plugins_url( 'archive.css', __FILE__ ), array(), VERSION );
-	wp_register_script( 'content-trees-post-loader', plugins_url( 'post-loader.js', __FILE__ ), array(), VERSION, true );
-	wp_register_script( 'content-trees-tree', plugins_url( 'tree.js', __FILE__ ), array( 'content-trees-post-loader' ), VERSION, true );
+	wp_register_style( 'content-trees', plugins_url( 'shared/archive.css', __FILE__ ), array(), VERSION );
+	wp_register_script( 'content-trees-post-loader', plugins_url( 'shared/post-loader.js', __FILE__ ), array(), VERSION, true );
+	wp_register_script( 'content-trees-tree', plugins_url( 'shared/tree.js', __FILE__ ), array( 'content-trees-post-loader' ), VERSION, true );
 	wp_register_script(
 		'content-trees-editor-selector',
-		plugins_url( 'editor-selector.js', __FILE__ ),
+		plugins_url( 'shared/editor-selector.js', __FILE__ ),
 		array( 'wp-element', 'wp-components', 'wp-i18n', 'wp-api-fetch' ),
 		VERSION,
 		true
@@ -45,7 +45,7 @@ add_action( 'init', __NAMESPACE__ . '\register_assets' );
  */
 function enqueue_settings( $hook ) {
 	if ( in_array( $hook, array( 'widgets.php', 'customize.php' ), true ) ) {
-		wp_enqueue_script( 'ctrees-settings', plugins_url( 'settings.js', __FILE__ ), array( 'wp-api-fetch', 'jquery' ), VERSION, true );
+		wp_enqueue_script( 'ctrees-settings', plugins_url( 'shared/settings.js', __FILE__ ), array( 'wp-api-fetch', 'jquery' ), VERSION, true );
 	}
 }
 add_action( 'admin_enqueue_scripts', __NAMESPACE__ . '\\enqueue_settings' );
@@ -64,6 +64,6 @@ function hide_legacy_widgets( $types ) {
 add_filter( 'widget_types_to_hide_from_legacy_widget_block', __NAMESPACE__ . '\\hide_legacy_widgets' );
 add_action( 'wp_enqueue_scripts', __NAMESPACE__ . '\\enqueue_detected_trees' );
 
-require_once __DIR__ . '/archive.php';
-require_once __DIR__ . '/pages.php';
-require_once __DIR__ . '/taxonomy.php';
+require_once __DIR__ . '/archive/archive.php';
+require_once __DIR__ . '/pages/pages.php';
+require_once __DIR__ . '/taxonomy/taxonomy.php';

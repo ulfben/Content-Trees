@@ -12,7 +12,7 @@ const browser = await chromium.launch({
 const artifactRoot = 'tests/results/';
 const html = fs.readFileSync(artifactRoot + 'taxonomy-baseline-render.html', 'utf8');
 const ids = JSON.parse(fs.readFileSync(artifactRoot + 'taxonomy-baseline-ids.json', 'utf8'));
-const css = fs.readFileSync('archive.css', 'utf8');
+const css = fs.readFileSync('shared/archive.css', 'utf8');
 const errors = [];
 try {
 	const context = await browser.newContext({ javaScriptEnabled: false });
@@ -97,10 +97,10 @@ try {
 	mixed.on('request', () => {
 		requests++;
 	});
-	await mixed.addScriptTag({ content: fs.readFileSync('post-loader.js', 'utf8') });
-	await mixed.addScriptTag({ content: fs.readFileSync('tree.js', 'utf8') });
-	await mixed.addScriptTag({ content: fs.readFileSync('archive.js', 'utf8') });
-	await mixed.addScriptTag({ content: fs.readFileSync('pages.js', 'utf8') });
+	await mixed.addScriptTag({ content: fs.readFileSync('shared/post-loader.js', 'utf8') });
+	await mixed.addScriptTag({ content: fs.readFileSync('shared/tree.js', 'utf8') });
+	await mixed.addScriptTag({ content: fs.readFileSync('archive/archive.js', 'utf8') });
+	await mixed.addScriptTag({ content: fs.readFileSync('pages/pages.js', 'utf8') });
 	assert.equal(await mixed.locator('.ctrees-taxonomy-tree .ctrees-announcement').count(), 0);
 	assert.equal(
 		await mixed

@@ -35,8 +35,8 @@ function review_dom( $html ) {
 		return new DOMXPath( $doc );
 }
 $source = require __DIR__ . '/source.php';
-review_check( realpath( ( new ReflectionFunction( 'ContentTrees\\render' ) )->getFileName() ) === realpath( $source . '/archive.php' ), 'Archive rendering loads from archive.php.' );
-review_check( realpath( ( new ReflectionFunction( 'ContentTrees\\post_node' ) )->getFileName() ) === realpath( $source . '/tree.php' ), 'Taxonomy and archive post helpers remain shared.' );
+review_check( realpath( ( new ReflectionFunction( 'ContentTrees\\render' ) )->getFileName() ) === realpath( $source . '/archive/archive.php' ), 'Archive rendering loads from archive.php.' );
+review_check( realpath( ( new ReflectionFunction( 'ContentTrees\\post_node' ) )->getFileName() ) === realpath( $source . '/shared/tree.php' ), 'Taxonomy and archive post helpers remain shared.' );
 $editor = wp_scripts()->registered['content-trees-taxonomy-editor'];
 review_check( $editor->textdomain === 'content-trees' && in_array( 'wp-i18n', $editor->deps, true ), 'The taxonomy editor registers its translation domain and dependency.' );
 foreach ( array( 'categories', 'tags' ) as $provider ) {

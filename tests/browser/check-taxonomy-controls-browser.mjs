@@ -11,7 +11,7 @@ const browser = await chromium.launch({
 const root = 'tests/results/';
 const html =
 	'<style>' +
-	fs.readFileSync('archive.css', 'utf8') +
+	fs.readFileSync('shared/archive.css', 'utf8') +
 	'</style>' +
 	fs.readFileSync(root + 'taxonomy-controls-render.html', 'utf8');
 const ids = JSON.parse(fs.readFileSync(root + 'taxonomy-controls-ids.json', 'utf8'));
@@ -31,12 +31,12 @@ try {
 		};
 	}, responses);
 	for (const script of [
-		'post-loader.js',
-		'tree.js',
-		'archive.js',
-		'pages.js',
-		'taxonomy.js',
-		'taxonomy.js',
+		'shared/post-loader.js',
+		'shared/tree.js',
+		'archive/archive.js',
+		'pages/pages.js',
+		'taxonomy/taxonomy.js',
+		'taxonomy/taxonomy.js',
 	])
 		await page.addScriptTag({ content: fs.readFileSync('' + script, 'utf8') });
 	assert.equal(

@@ -26,7 +26,7 @@ function heading_check( $condition, $message ) {
 	echo "PASS: $message\n";
 }
 $source = require __DIR__ . '/source.php';
-heading_check( realpath( ( new ReflectionFunction( 'ContentTrees\\render_taxonomy' ) )->getFileName() ) === realpath( $source . '/taxonomy.php' ), 'Standalone taxonomy source is loaded.' );
+heading_check( realpath( ( new ReflectionFunction( 'ContentTrees\\render_taxonomy' ) )->getFileName() ) === realpath( $source . '/taxonomy/taxonomy.php' ), 'Standalone taxonomy source is loaded.' );
 $option_names = array( 'widget_ctrees_pages', 'widget_ctrees_categories', 'widget_ctrees_tags', 'widget_block', 'sidebars_widgets', 'stylesheet', 'template', 'WPLANG' );
 $before       = array();
 foreach ( $option_names as $name ) {

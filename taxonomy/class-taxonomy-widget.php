@@ -245,5 +245,5 @@ class Taxonomy_Widget extends \WP_Widget {
 
 
 
-require_once __DIR__ . '/class-categories-widget.php';
-require_once __DIR__ . '/class-tags-widget.php';
+require_once dirname( __DIR__ ) . '/categories/class-categories-widget.php';
+require_once dirname( __DIR__ ) . '/tags/class-tags-widget.php';

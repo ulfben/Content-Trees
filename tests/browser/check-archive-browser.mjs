@@ -8,7 +8,7 @@ const browser = await chromium.launch({
 });
 const html = fs.readFileSync('tests/results/archive-render.html', 'utf8');
 const responses = JSON.parse(fs.readFileSync('tests/results/archive-posts.json', 'utf8'));
-const css = fs.readFileSync('archive.css', 'utf8');
+const css = fs.readFileSync('shared/archive.css', 'utf8');
 const errors = [];
 try {
 	const page = await browser.newPage();
@@ -41,7 +41,7 @@ try {
 			return { ok: true, json: async () => responses[key] };
 		};
 	}, responses);
-	for (const file of ['post-loader.js', 'tree.js', 'archive.js'])
+	for (const file of ['shared/post-loader.js', 'shared/tree.js', 'archive/archive.js'])
 		await page.addScriptTag({ content: fs.readFileSync(file, 'utf8') });
 	const grouped = page.locator('nav[aria-label="Grouped archive"]');
 	const flat = page.locator('nav[aria-label="Flat archive"]');

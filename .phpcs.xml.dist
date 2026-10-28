@@ -5,16 +5,16 @@
     <arg name="basepath" value="."/>
     <config name="testVersion" value="7.4-8.5"/>
     <file>content-trees.php</file>
-    <file>tree.php</file>
-    <file>archive.php</file>
-    <file>pages.php</file>
-    <file>taxonomy.php</file>
-    <file>class-archive-widget.php</file>
-    <file>class-pages-widget.php</file>
-    <file>class-taxonomy-widget.php</file>
-    <file>class-categories-widget.php</file>
-    <file>class-tags-widget.php</file>
-    <file>block/editor.asset.php</file>
+    <file>shared/tree.php</file>
+    <file>archive/archive.php</file>
+    <file>pages/pages.php</file>
+    <file>taxonomy/taxonomy.php</file>
+    <file>archive/class-archive-widget.php</file>
+    <file>pages/class-pages-widget.php</file>
+    <file>taxonomy/class-taxonomy-widget.php</file>
+    <file>categories/class-categories-widget.php</file>
+    <file>tags/class-tags-widget.php</file>
+    <file>archive/editor.asset.php</file>
     <file>pages/editor.asset.php</file>
     <rule ref="WordPress"/>
     <rule ref="PHPCompatibilityWP"/>

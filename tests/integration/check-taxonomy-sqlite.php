@@ -12,7 +12,7 @@ if ( ! defined( 'CONTENT_TREES_SQLITE_DISPOSABLE' ) || ! CONTENT_TREES_SQLITE_DI
 	|| ! function_exists( 'ContentTrees\\render_taxonomy' ) || get_class( $wpdb ) === 'wpdb' ) {
 	throw new RuntimeException( 'The guarded SQLite integration and Content Trees must be active.' );
 }
-$source = dirname( __DIR__, 2 ) . '/taxonomy.php';
+$source = dirname( __DIR__, 2 ) . '/taxonomy/taxonomy.php';
 if ( hash_file( 'sha256', $source ) !== hash_file( 'sha256', ( new ReflectionFunction( 'ContentTrees\\render_taxonomy' ) )->getFileName() ) ) {
 	throw new RuntimeException( 'The installed taxonomy code differs from this checkout.' );
 }

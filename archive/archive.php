@@ -13,7 +13,7 @@ add_action(
 	'init',
 	static function () {
 		wp_register_script( 'content-trees', plugins_url( 'archive.js', __FILE__ ), array( 'content-trees-tree' ), VERSION, true );
-		register_block_type( __DIR__ . '/block', array( 'render_callback' => __NAMESPACE__ . '\\render_archive_block' ) );
+		register_block_type( __DIR__, array( 'render_callback' => __NAMESPACE__ . '\\render_archive_block' ) );
 	}
 );
 

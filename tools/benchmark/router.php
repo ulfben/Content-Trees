@@ -19,7 +19,7 @@ if ( ! defined( 'CONTENT_TREES_DISPOSABLE_TEST_SITE' ) || true !== CONTENT_TREES
 	|| ! defined( 'CONTENT_TREES_BENCHMARK_SITE' ) || true !== CONTENT_TREES_BENCHMARK_SITE
 	|| ! in_array( DB_NAME, array( 'content_trees_test', 'content_trees_minimum' ), true ) || DB_HOST !== $host
 	|| ! function_exists( 'ContentTrees\\render_taxonomy' )
-	|| realpath( ( new ReflectionFunction( 'ContentTrees\\render_taxonomy' ) )->getFileName() ) !== realpath( dirname( __DIR__, 2 ) . '/taxonomy.php' ) ) {
+	|| realpath( ( new ReflectionFunction( 'ContentTrees\\render_taxonomy' ) )->getFileName() ) !== realpath( dirname( __DIR__, 2 ) . '/taxonomy/taxonomy.php' ) ) {
 	throw new RuntimeException( 'Refusing an unguarded site or a different plugin checkout.' );
 }
 if ( ( defined( 'WP_CACHE' ) && WP_CACHE ) || is_file( WP_CONTENT_DIR . '/advanced-cache.php' ) ) {

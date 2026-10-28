@@ -11,9 +11,9 @@ const browser = await chromium.launch({
 });
 const artifactPath = 'tests/results/pages-render.html';
 const artifact = fs.readFileSync(artifactPath, 'utf8');
-const css = fs.readFileSync('archive.css', 'utf8');
-const archiveJs = fs.readFileSync('archive.js', 'utf8');
-const pagesJs = fs.readFileSync('pages.js', 'utf8');
+const css = fs.readFileSync('shared/archive.css', 'utf8');
+const archiveJs = fs.readFileSync('archive/archive.js', 'utf8');
+const pagesJs = fs.readFileSync('pages/pages.js', 'utf8');
 const errors = [];
 
 async function loadFixture(page, scripts = false, instrument = false) {
@@ -41,8 +41,8 @@ async function loadFixture(page, scripts = false, instrument = false) {
             `,
 			});
 		}
-		await page.addScriptTag({ content: fs.readFileSync('post-loader.js', 'utf8') });
-		await page.addScriptTag({ content: fs.readFileSync('tree.js', 'utf8') });
+		await page.addScriptTag({ content: fs.readFileSync('shared/post-loader.js', 'utf8') });
+		await page.addScriptTag({ content: fs.readFileSync('shared/tree.js', 'utf8') });
 		await page.addScriptTag({ content: archiveJs });
 		await page.addScriptTag({ content: pagesJs });
 	}

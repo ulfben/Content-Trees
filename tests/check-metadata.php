@@ -9,12 +9,12 @@ if ( ! preg_match( '/^ \* Version: (\S+)$/m', $main, $header )
 }
 $version = $header[1];
 define( 'ContentTrees\VERSION', $version );
-foreach ( array( 'block', 'pages', 'categories', 'tags' ) as $provider ) {
+foreach ( array( 'archive', 'pages', 'categories', 'tags' ) as $provider ) {
 	$block = json_decode( file_get_contents( $root . '/' . $provider . '/block.json' ), true, 512, JSON_THROW_ON_ERROR );
 	if ( $version !== $block['version'] ) {
 		throw new RuntimeException( 'Block version differs for ' . $provider );
 	}
-	if ( in_array( $provider, array( 'block', 'pages' ), true ) ) {
+	if ( in_array( $provider, array( 'archive', 'pages' ), true ) ) {
 		$asset = require $root . '/' . $provider . '/editor.asset.php';
 		if ( $version !== $asset['version'] ) {
 			throw new RuntimeException( 'Editor asset version differs for ' . $provider );

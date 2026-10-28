@@ -21,7 +21,7 @@ if ( ! defined( 'CONTENT_TREES_DISPOSABLE_TEST_SITE' ) || ! CONTENT_TREES_DISPOS
 if ( ! function_exists( 'ContentTrees\\render' ) ) {
 	throw new RuntimeException( 'Activate Content Trees on the disposable site first.' ); }
 $source = dirname( __DIR__, 2 );
-if ( realpath( ( new ReflectionFunction( 'ContentTrees\\render' ) )->getFileName() ) !== realpath( $source . '/archive.php' ) ) {
+if ( realpath( ( new ReflectionFunction( 'ContentTrees\\render' ) )->getFileName() ) !== realpath( $source . '/archive/archive.php' ) ) {
 	throw new RuntimeException( 'The fixture loaded a different Content Trees checkout.' );
 }
 $results = dirname( __DIR__ ) . '/results';
