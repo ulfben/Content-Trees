@@ -176,15 +176,16 @@ function taxonomy_block_options( $taxonomy, $attributes ) {
 	return taxonomy_options( $taxonomy, $args );
 }
 
-// Preserve database name collation, with a stable ID tie for these queries only.
-add_filter(
-	'get_terms_orderby',
-	static function ( $orderby, $args ) {
-		return ! empty( $args['ctrees_name_order'] ) ? $orderby . ( 'DESC' === $args['ctrees_name_order'] ? ' DESC' : ' ASC' ) . ', t.term_id' : $orderby;
-	},
-	10,
-	2
-);
+/**
+ * Preserve database name collation and use a stable ID tie for these queries.
+ *
+ * @param string $orderby Existing order expression.
+ * @param array  $args Term query arguments.
+ */
+function taxonomy_name_orderby( $orderby, $args ) {
+	return ! empty( $args['ctrees_name_order'] ) ? $orderby . ( 'DESC' === $args['ctrees_name_order'] ? ' DESC' : ' ASC' ) . ', t.term_id' : $orderby;
+}
+add_filter( 'get_terms_orderby', __NAMESPACE__ . '\\taxonomy_name_orderby', 10, 2 );
 
 /**
  * Resolve original category ancestry without disclosing filtered parent names.
@@ -229,6 +230,281 @@ function taxonomy_parents( $taxonomy, $terms, $original = null, $root = 0 ) {
 	}
 	$parents = acyclic_parents( $parents );
 	return $parents;
+}
+
+/** Invalidate the two bounded count snapshots after relevant changes. */
+function taxonomy_invalidate_count_cache() {
+	update_option( 'ctrees_taxonomy_count_revision', wp_generate_uuid4(), false );
+	delete_transient( 'ctrees_taxonomy_counts_category' );
+	delete_transient( 'ctrees_taxonomy_counts_post_tag' );
+}
+
+/**
+ * Whether a post contributes to public taxonomy trees.
+ *
+ * @param mixed $post Post to check.
+ * @return bool Whether the post is eligible.
+ */
+function taxonomy_cache_post_eligible( $post ) {
+	return $post instanceof \WP_Post && 'post' === $post->post_type && 'publish' === $post->post_status && '' === $post->post_password;
+}
+
+/**
+ * Invalidate when a post changes membership in the eligible population.
+ *
+ * @param int      $post_id Post ID.
+ * @param \WP_Post $after Updated post.
+ * @param \WP_Post $before Previous post.
+ */
+function taxonomy_cache_post_updated( $post_id, $after, $before ) {
+	if ( taxonomy_cache_post_eligible( $before ) !== taxonomy_cache_post_eligible( $after ) ) {
+		taxonomy_invalidate_count_cache();
+	}
+}
+add_action( 'post_updated', __NAMESPACE__ . '\\taxonomy_cache_post_updated', 10, 3 );
+
+/**
+ * Cover direct publication paths, including scheduled publication.
+ *
+ * @param string   $new_status New status.
+ * @param string   $old_status Previous status.
+ * @param \WP_Post $post Post being transitioned.
+ */
+function taxonomy_cache_status_changed( $new_status, $old_status, $post ) {
+	if ( $post instanceof \WP_Post && 'post' === $post->post_type && '' === $post->post_password
+		&& ( ( 'publish' === $old_status ) !== ( 'publish' === $new_status ) ) ) {
+		taxonomy_invalidate_count_cache();
+	}
+}
+add_action( 'transition_post_status', __NAMESPACE__ . '\\taxonomy_cache_status_changed', 10, 3 );
+
+/**
+ * A deleted eligible post no longer contributes to any tree.
+ *
+ * @param int      $post_id Deleted post ID.
+ * @param \WP_Post $post Deleted post.
+ */
+function taxonomy_cache_post_deleted( $post_id, $post ) {
+	if ( taxonomy_cache_post_eligible( $post ) ) {
+		taxonomy_invalidate_count_cache();
+	}
+}
+add_action( 'deleted_post', __NAMESPACE__ . '\\taxonomy_cache_post_deleted', 10, 2 );
+
+/**
+ * Only relationships of eligible posts in supported taxonomies matter.
+ *
+ * @param int       $object_id Post ID.
+ * @param int|int[] $term_taxonomy_ids Changed relationship IDs.
+ * @param string    $taxonomy Taxonomy name.
+ */
+function taxonomy_cache_relationship_changed( $object_id, $term_taxonomy_ids, $taxonomy ) {
+	if ( in_array( $taxonomy, array( 'category', 'post_tag' ), true ) && $term_taxonomy_ids && taxonomy_cache_post_eligible( get_post( $object_id ) ) ) {
+		taxonomy_invalidate_count_cache();
+	}
+}
+add_action( 'added_term_relationship', __NAMESPACE__ . '\\taxonomy_cache_relationship_changed', 0, 3 );
+add_action( 'deleted_term_relationships', __NAMESPACE__ . '\\taxonomy_cache_relationship_changed', 0, 3 );
+
+/**
+ * Term structure and visibility changes affect only these two taxonomies.
+ *
+ * @param int    $term_id Term ID.
+ * @param int    $term_taxonomy_id Term-taxonomy ID.
+ * @param string $taxonomy Taxonomy name.
+ */
+function taxonomy_cache_term_changed( $term_id, $term_taxonomy_id, $taxonomy ) {
+	if ( in_array( $taxonomy, array( 'category', 'post_tag' ), true ) ) {
+		taxonomy_invalidate_count_cache();
+	}
+}
+add_action( 'edited_term', __NAMESPACE__ . '\\taxonomy_cache_term_changed', 10, 3 );
+add_action( 'delete_term', __NAMESPACE__ . '\\taxonomy_cache_term_changed', 10, 3 );
+
+/**
+ * Capture the old state for core's set_post_type(), which has no update action.
+ * The SQL is returned unchanged; all other database queries pass through.
+ *
+ * @param string $sql Database query.
+ * @return string Unchanged query.
+ */
+function taxonomy_cache_observe_type_update( $sql ) {
+	global $wpdb;
+	if ( get_class( $wpdb ) !== 'wpdb' || 0 !== stripos( ltrim( $sql ), 'UPDATE' )
+		|| ! preg_match( '/^\\s*UPDATE\\s+`?' . preg_quote( $wpdb->posts, '/' ) . '`?\\s+SET\\s+`?post_type`?\\s*=/i', $sql ) ) {
+		return $sql;
+	}
+	// The core caller's current, sanitized post type is the value being written.
+	// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_debug_backtrace,PHPCompatibility.FunctionUse.ArgumentFunctionsReportCurrentValue.NeedsInspection -- Core exposes no action for set_post_type; inspect its active arguments only for a matching UPDATE.
+	foreach ( debug_backtrace( DEBUG_BACKTRACE_PROVIDE_OBJECT, 12 ) as $frame ) {
+		if ( 'set_post_type' !== ( $frame['function'] ?? '' ) || isset( $frame['class'] ) ) {
+			continue;
+		}
+		$post_id  = (int) ( $frame['args'][0] ?? 0 );
+		$new_type = (string) ( $frame['args'][1] ?? 'post' );
+		if ( ! $post_id ) {
+			break;
+		}
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- The pre-update value must not come from a stale post cache.
+		$before = $wpdb->get_row( $wpdb->prepare( 'SELECT post_type, post_status, post_password FROM %i WHERE ID = %d', $wpdb->posts, $post_id ) );
+		if ( $before && $before->post_type !== $new_type && 'publish' === $before->post_status && '' === $before->post_password
+			&& ( 'post' === $before->post_type || 'post' === $new_type ) ) {
+			$GLOBALS['ctrees_taxonomy_type_changes'][ $post_id ] = ( 'post' === $before->post_type );
+		}
+		break;
+	}
+	return $sql;
+}
+add_filter( 'query', __NAMESPACE__ . '\\taxonomy_cache_observe_type_update', 1 );
+
+/**
+ * Finish the exceptional set_post_type() invalidation after core's update.
+ *
+ * @param int $post_id Updated post ID.
+ */
+function taxonomy_cache_type_updated( $post_id ) {
+	global $wpdb;
+	if ( ! isset( $GLOBALS['ctrees_taxonomy_type_changes'][ $post_id ] ) ) {
+		return;
+	}
+	$was_eligible = $GLOBALS['ctrees_taxonomy_type_changes'][ $post_id ];
+	unset( $GLOBALS['ctrees_taxonomy_type_changes'][ $post_id ] );
+	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Verify the database state after core's update.
+	$after       = $wpdb->get_row( $wpdb->prepare( 'SELECT post_type, post_status, post_password FROM %i WHERE ID = %d', $wpdb->posts, $post_id ) );
+	$is_eligible = $after && 'post' === $after->post_type && 'publish' === $after->post_status && '' === $after->post_password;
+	if ( (bool) $was_eligible !== (bool) $is_eligible ) {
+		taxonomy_invalidate_count_cache();
+	}
+}
+add_action( 'clean_post_cache', __NAMESPACE__ . '\\taxonomy_cache_type_updated', 0 );
+
+/**
+ * Use a count snapshot only when the normal query has no external hooks.
+ *
+ * @param string $taxonomy Built-in taxonomy name.
+ * @param array  $args Normalized tree options.
+ */
+function taxonomy_count_cache_safe( $taxonomy, $args ) {
+	global $wpdb, $wp_filter;
+	if ( wp_using_ext_object_cache() || is_user_logged_in() || get_class( $wpdb ) !== 'wpdb' || $args['open_to']
+		|| ( $args['auto_open'] && ( is_singular( 'post' ) || ( 'category' === $taxonomy && is_category() ) || ( 'post_tag' === $taxonomy && is_tag() ) ) ) ) {
+		return false;
+	}
+	$hooks     = array(
+		'all',
+		'parse_query',
+		'pre_get_posts',
+		'posts_pre_query',
+		'posts_where',
+		'posts_join',
+		'posts_where_paged',
+		'posts_groupby',
+		'posts_join_paged',
+		'posts_orderby',
+		'posts_distinct',
+		'post_limits',
+		'posts_fields',
+		'posts_clauses',
+		'posts_where_request',
+		'posts_groupby_request',
+		'posts_join_request',
+		'posts_orderby_request',
+		'posts_distinct_request',
+		'posts_fields_request',
+		'post_limits_request',
+		'posts_clauses_request',
+		'posts_request',
+		'query',
+		'pre_get_terms',
+		'get_terms_defaults',
+		'get_terms_args',
+		'list_terms_exclusions',
+		'get_terms_fields',
+		'terms_clauses',
+		'terms_pre_query',
+		'get_terms',
+		'get_terms_orderby',
+		'get_term',
+		'get_category',
+		'get_post_tag',
+		'get_term_metadata',
+		'term_link',
+		'wp_generate_uuid4',
+		'pre_option_ctrees_taxonomy_count_revision',
+		'option_ctrees_taxonomy_count_revision',
+		'default_option_ctrees_taxonomy_count_revision',
+	);
+	$transient = 'ctrees_taxonomy_counts_' . $taxonomy;
+	foreach ( array( 'pre_transient_', 'transient_', 'pre_set_transient_', 'expiration_of_transient_' ) as $prefix ) {
+		$hooks[] = $prefix . $transient;
+	}
+	foreach ( $hooks as $hook ) {
+		if ( empty( $wp_filter[ $hook ] ) ) {
+			continue;
+		}
+		foreach ( $wp_filter[ $hook ]->callbacks as $callbacks ) {
+			foreach ( $callbacks as $callback ) {
+				$function = $callback['function'];
+				if ( 'query' === $hook && is_array( $function ) && $function[0] === $wpdb && 'remove_placeholder_escape' === $function[1] ) {
+					continue;
+				}
+				if ( 'query' === $hook && __NAMESPACE__ . '\\taxonomy_cache_observe_type_update' === $function ) {
+					continue;
+				}
+				if ( 'get_terms' === $hook && '_post_format_get_terms' === $function ) {
+					continue;
+				}
+				if ( 'get_term_metadata' === $hook && 'wp_check_term_meta_support_prefilter' === $function ) {
+					continue;
+				}
+				if ( 'get_term_metadata' === $hook && is_array( $function ) && $function[0] instanceof \WP_Metadata_Lazyloader && 'lazyload_meta_callback' === $function[1] ) {
+					continue;
+				}
+				if ( 'term_link' === $hook && '_post_format_link' === $function ) {
+					continue;
+				}
+				if ( 'get_terms_orderby' === $hook && __NAMESPACE__ . '\\taxonomy_name_orderby' === $function ) {
+					continue;
+				}
+				return false;
+			}
+		}
+	}
+	return true;
+}
+
+/** Stable across requests even without an external object cache. */
+function taxonomy_count_cache_revision() {
+	$revision = get_option( 'ctrees_taxonomy_count_revision', '' );
+	if ( ! $revision ) {
+		add_option( 'ctrees_taxonomy_count_revision', wp_generate_uuid4(), '', false );
+		$revision = get_option( 'ctrees_taxonomy_count_revision', '' );
+	}
+	return $revision;
+}
+
+/**
+ * Try a bounded, connection-scoped database lock for one taxonomy rebuild.
+ *
+ * @param string $taxonomy Taxonomy name.
+ * @return string Lock name, or an empty string on timeout or failure.
+ */
+function taxonomy_count_cache_lock( $taxonomy ) {
+	global $wpdb;
+	$name = 'ctrees-' . md5( DB_NAME . '|' . $wpdb->prefix . '|' . $taxonomy );
+	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Connection-scoped coordination cannot use the object cache.
+	return '1' === (string) $wpdb->get_var( $wpdb->prepare( 'SELECT GET_LOCK(%s, %d)', $name, 1 ) ) ? $name : '';
+}
+
+/**
+ * Release a lock held by this database connection.
+ *
+ * @param string $name Lock name.
+ */
+function taxonomy_count_cache_unlock( $name ) {
+	global $wpdb;
+	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Release the connection-scoped lock even on failure.
+	$wpdb->get_var( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', $name ) );
 }
 
 /**
@@ -383,8 +659,9 @@ add_action(
  *
  * @param string $taxonomy Built-in taxonomy name.
  * @param array  $args Tree options or theme widget wrappers.
+ * @param bool   $closed_outline Whether the caller needs only closed branches.
  */
-function taxonomy_data( $taxonomy, $args = array() ) {
+function taxonomy_data( $taxonomy, $args = array(), $closed_outline = false ) {
 	$data = array(
 		'terms'       => array(),
 		'parents'     => array(),
@@ -438,35 +715,121 @@ function taxonomy_data( $taxonomy, $args = array() ) {
 	}
 	if ( ! $data['terms'] ) {
 		return $data; }
-	$data['parents']   = taxonomy_parents( $taxonomy, $data['terms'], $original, $args['root'] );
-	$needs_memberships = $args['show_posts'] || $args['show_counts'] || $args['hide_empty'] || 'count' === $args['sort_by'];
-	$post_ids          = array();
-	if ( $needs_memberships ) {
-		$query    = taxonomy_post_query( $taxonomy, array_keys( $data['terms'] ), $args, true );
-		$post_ids = array_values( array_diff( exclusion_ids( $query->posts ), $args['excluded_posts'] ) );
-	} elseif ( $args['auto_open'] && is_singular( 'post' ) && is_public_post( get_queried_object() ) ) {
-		$current = (int) get_queried_object_id();
-		if ( ! in_array( $current, $args['excluded_posts'], true ) ) {
-			$post_ids = array( $current ); }
-	}
-	foreach ( taxonomy_membership_rows( $taxonomy, array_keys( $data['terms'] ), $post_ids ) as $row ) {
-		$data['memberships'][ (int) $row->term_id ][ (int) $row->object_id ] = true;
-	}
-	$unique = array();
-	foreach ( $data['memberships'] as $term_id => $posts ) {
-		foreach ( $posts as $id => $unused ) {
-			$parent_id = $term_id;
-			while ( $parent_id ) {
-				$unique[ $parent_id ][ $id ] = true;
-				$parent_id                   = $data['parents'][ $parent_id ];
+	$data['parents']     = taxonomy_parents( $taxonomy, $data['terms'], $original, $args['root'] );
+	$needs_memberships   = $args['show_posts'] || $args['show_counts'] || $args['hide_empty'] || 'count' === $args['sort_by'];
+	$cache_safe          = $closed_outline && $needs_memberships && taxonomy_count_cache_safe( $taxonomy, $args );
+	$minimum_cache_posts = $cache_safe ? max( 0, (int) apply_filters( 'content_trees_taxonomy_cache_min_posts', 1000 ) ) : 0;
+	if ( $cache_safe && $minimum_cache_posts ) {
+		// Stored counts are only a cheap cache-worthiness hint, never displayed.
+		$possible_memberships = 0;
+		foreach ( $data['terms'] as $term ) {
+			$possible_memberships += max( 0, (int) $term['term']->count );
+			if ( $possible_memberships >= $minimum_cache_posts ) {
+				break;
 			}
 		}
+		if ( $possible_memberships < $minimum_cache_posts ) {
+			$cache_safe = false;
+		}
+	}
+	$cache_key = 'ctrees_taxonomy_counts_' . $taxonomy;
+	$revision  = $cache_safe ? taxonomy_count_cache_revision() : '';
+	$signature = $cache_safe ? md5( wp_json_encode( array( $taxonomy, $args, array_keys( $data['terms'] ), $data['parents'], $minimum_cache_posts ) ) ) : '';
+	$snapshot  = $cache_safe && $revision ? get_transient( $cache_key ) : false;
+	$entries   = is_array( $snapshot ) && ( $snapshot['revision'] ?? '' ) === $revision && isset( $snapshot['entries'] ) && is_array( $snapshot['entries'] ) ? $snapshot['entries'] : array();
+	$cached    = $entries[ $signature ] ?? false;
+	if ( ! is_array( $cached ) || ! isset( $cached['counts'], $cached['direct'] ) || ! is_array( $cached['counts'] ) || ! is_array( $cached['direct'] ) ) {
+		$cached = false;
+	}
+	$lock = '';
+	try {
+		if ( $cache_safe && $revision && ! $cached ) {
+			$lock = taxonomy_count_cache_lock( $taxonomy );
+			if ( $lock ) {
+				// Another request may have rebuilt while this connection waited.
+				wp_cache_delete( 'ctrees_taxonomy_count_revision', 'options' );
+				wp_cache_delete( '_transient_' . $cache_key, 'options' );
+				wp_cache_delete( '_transient_timeout_' . $cache_key, 'options' );
+				wp_cache_delete( 'notoptions', 'options' );
+				$revision = taxonomy_count_cache_revision();
+				$snapshot = get_transient( $cache_key );
+				$entries  = is_array( $snapshot ) && ( $snapshot['revision'] ?? '' ) === $revision && isset( $snapshot['entries'] ) && is_array( $snapshot['entries'] ) ? $snapshot['entries'] : array();
+				$cached   = $entries[ $signature ] ?? false;
+				if ( ! is_array( $cached ) || ! isset( $cached['counts'], $cached['direct'] ) || ! is_array( $cached['counts'] ) || ! is_array( $cached['direct'] ) ) {
+					$cached = false;
+				}
+			} else {
+				// Never wait indefinitely or write a competing snapshot on timeout.
+				$cache_safe = false;
+			}
+		}
+		$post_ids = array();
+		if ( $needs_memberships && ! $cached ) {
+			$query    = taxonomy_post_query( $taxonomy, array_keys( $data['terms'] ), $args, true );
+			$post_ids = array_values( array_diff( exclusion_ids( $query->posts ), $args['excluded_posts'] ) );
+		} elseif ( ! $needs_memberships && $args['auto_open'] && is_singular( 'post' ) && is_public_post( get_queried_object() ) ) {
+			$current = (int) get_queried_object_id();
+			if ( ! in_array( $current, $args['excluded_posts'], true ) ) {
+				$post_ids = array( $current ); }
+		}
+		foreach ( taxonomy_membership_rows( $taxonomy, array_keys( $data['terms'] ), $post_ids ) as $row ) {
+			$data['memberships'][ (int) $row->term_id ][ (int) $row->object_id ] = true;
+		}
+		$unique = array();
+		foreach ( $data['memberships'] as $term_id => $posts ) {
+			foreach ( $posts as $id => $unused ) {
+				$parent_id = $term_id;
+				while ( $parent_id ) {
+					$unique[ $parent_id ][ $id ] = true;
+					$parent_id                   = $data['parents'][ $parent_id ];
+				}
+			}
+		}
+		$counts = array();
+		$direct = array();
+		if ( $cached ) {
+			$counts = $cached['counts'];
+			$direct = $cached['direct'];
+		} else {
+			foreach ( $data['terms'] as $id => $term ) {
+				$counts[ $id ] = count( $unique[ $id ] ?? array() );
+				$direct[ $id ] = count( $data['memberships'][ $id ] ?? array() );
+			}
+			if ( $cache_safe && $revision ) {
+				// The extra transient writes can cost more than this query on small sites.
+				if ( count( $post_ids ) >= $minimum_cache_posts ) {
+					// Bound storage while allowing different widget option sets to coexist.
+					if ( count( $entries ) >= 4 && ! isset( $entries[ $signature ] ) ) {
+						array_shift( $entries );
+					}
+					$entries[ $signature ] = array(
+						'counts' => $counts,
+						'direct' => $direct,
+					);
+					set_transient(
+						$cache_key,
+						array(
+							'revision' => $revision,
+							'entries'  => $entries,
+						),
+						HOUR_IN_SECONDS
+					);
+				}
+			}
+		}
+	} finally {
+		if ( $lock ) {
+			taxonomy_count_cache_unlock( $lock );
+		}
+	}
+	if ( $closed_outline ) {
+		$data['direct_counts'] = $direct;
 	}
 	foreach ( $data['terms'] as $id => $term ) {
-		if ( $args['hide_empty'] && empty( $unique[ $id ] ) ) {
+		if ( $args['hide_empty'] && empty( $counts[ $id ] ) ) {
 			unset( $data['terms'][ $id ], $data['parents'][ $id ] );
 			continue; }
-		$data['counts'][ $id ]                         = count( $unique[ $id ] ?? array() );
+		$data['counts'][ $id ]                         = $counts[ $id ];
 		$data['children'][ $data['parents'][ $id ] ][] = $id;
 	}
 	if ( 'count' === $args['sort_by'] ) {
@@ -505,7 +868,7 @@ function render_taxonomy_items( $parent_id, $data, $current_term, $current_post,
 			$link .= '<span class="ctrees-count">(' . esc_html( number_format_i18n( $data['counts'][ $id ] ) ) . ')</span>'; }
 		$children  = render_taxonomy_items( $id, $data, $current_term, $current_post, $open, $args );
 		$post_list = '';
-		$has_posts = $args['show_posts'] && ! empty( $data['memberships'][ $id ] );
+		$has_posts = $args['show_posts'] && ( ! empty( $data['memberships'][ $id ] ) || ! empty( $data['direct_counts'][ $id ] ) );
 		if ( $has_posts && isset( $open[ $id ] ) ) {
 			foreach ( $data['post_lists'][ $id ] ?? array() as $post_id ) {
 				if ( isset( $data['posts'][ $post_id ] ) ) {
@@ -538,7 +901,7 @@ function render_taxonomy( $taxonomy, $args = array() ) {
 	if ( ! in_array( $taxonomy, array( 'category', 'post_tag' ), true ) ) {
 		return ''; }
 	$args         = taxonomy_options( $taxonomy, $args );
-	$data         = taxonomy_data( $taxonomy, $args );
+	$data         = taxonomy_data( $taxonomy, $args, true );
 	$queried      = get_queried_object();
 	$current_term = ( ( 'category' === $taxonomy && is_category() ) || ( 'post_tag' === $taxonomy && is_tag() ) )
 		&& $queried instanceof \WP_Term && $queried->taxonomy === $taxonomy ? (int) $queried->term_id : 0;
@@ -605,7 +968,7 @@ function render_taxonomy( $taxonomy, $args = array() ) {
 		$html .= '<h2>' . esc_html( $args['title'] ) . '</h2>'; }
 	$has_branches = false;
 	foreach ( $data['terms'] as $id => $term ) {
-		if ( ! empty( $data['children'][ $id ] ) || ( $args['show_posts'] && ! empty( $data['memberships'][ $id ] ) ) ) {
+		if ( ! empty( $data['children'][ $id ] ) || ( $args['show_posts'] && ( ! empty( $data['memberships'][ $id ] ) || ! empty( $data['direct_counts'][ $id ] ) ) ) ) {
 			$has_branches = true;
 			break; }
 	}

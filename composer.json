@@ -29,7 +29,8 @@
             "@php tests/integration/check-taxonomy-selectors.php",
             "@php tests/integration/check-taxonomy-headings.php",
             "@php tests/integration/check-consolidation.php",
-            "@php tests/integration/check-interface-text.php"
+            "@php tests/integration/check-interface-text.php",
+            "@php tests/integration/check-taxonomy-count-cache.php"
         ]
     }
 }
