@@ -13,6 +13,8 @@
 
 Collapsible navigation for your archives, pages, categories and tags.
 
+**[Install Content Trees from WordPress.org](https://wordpress.org/plugins/content-trees/)**
+
 ## Description
 
 Help visitors find their way around your site with compact, collapsible trees for archives, pages, categories and tags. Visitors can open the branches that interest them without navigating away from the page.
